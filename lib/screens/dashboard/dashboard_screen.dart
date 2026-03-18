@@ -26,8 +26,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late Future<List<Account>> _accountsFuture;
 
   // Announcement post state (only shown to admins)
-  final TextEditingController _announcementTitleController =
-      TextEditingController();
   final TextEditingController _announcementBodyController =
       TextEditingController();
   bool _isPostingAnnouncement = false;
@@ -392,13 +390,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _postAnnouncement() async {
     final body = _announcementBodyController.text.trim();
-    final title = body.isEmpty
-        ? ''
-        : (body.length <= 30 ? body : '${body.substring(0, 27)}...');
+    final hasMedia = _selectedMedia != null;
+    final hasFeeling = _selectedFeeling != null;
 
-    if (title.isEmpty || body.isEmpty) {
+    if (body.isEmpty && !hasMedia && !hasFeeling) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both a title and message.')),
+        const SnackBar(
+          content: Text('Please add text, photo, or feeling before posting.'),
+        ),
       );
       return;
     }
@@ -409,20 +408,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isPostingAnnouncement = true;
     });
 
-    // TODO: Save media and feeling to Announcement if model supports it
     await AnnouncementStorage.instance.addAnnouncement(
       Announcement(
-        title: title,
+        title: '',
         body: body,
         createdAt: DateTime.now(),
-        // Add media/feeling fields if Announcement model supports them
+        imagePath: _selectedMedia?.path,
+        emoji: _selectedFeeling,
       ),
     );
 
     if (!mounted) return;
 
     setState(() {
-      _announcementTitleController.clear();
       _announcementBodyController.clear();
       _selectedMedia = null;
       _selectedMediaType = null;
@@ -617,7 +615,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _announcementTitleController.dispose();
     _announcementBodyController.dispose();
     _selectedMedia = null;
     _selectedFeeling = null;

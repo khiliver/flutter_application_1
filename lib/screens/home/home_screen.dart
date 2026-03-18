@@ -12,21 +12,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<Map<String, String>> _dummyAnnouncements = const [
-    {
-      'title': 'Welcome to RISA',
-      'subtitle': 'Your research assistant is ready.',
-    },
-    {
-      'title': 'Update',
-      'subtitle': 'New books have been added to the library.',
-    },
-    {
-      'title': 'Maintenance',
-      'subtitle': 'System maintenance scheduled for tonight.',
-    },
-  ];
-
   bool _isLoading = true;
   List<Announcement> _announcements = [];
 
@@ -65,11 +50,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildContent() {
-    final allAnnouncements = [
-      ..._announcements.map((a) => {'title': a.title, 'subtitle': a.body}),
-      ..._dummyAnnouncements,
-    ];
-
     return CustomScrollView(
       slivers: [
         SliverPersistentHeader(
@@ -88,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-        if (allAnnouncements.isEmpty)
+        if (_announcements.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(child: Text('No announcements yet.')),
@@ -96,12 +76,13 @@ class _HomeScreenState extends State<HomeScreen> {
         else
           SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
-              final item = allAnnouncements[index];
+              final item = _announcements[index];
               return AnnouncementCard(
-                title: item['title']!,
-                subtitle: item['subtitle']!,
+                text: item.body,
+                imagePath: item.imagePath,
+                feeling: item.emoji,
               );
-            }, childCount: allAnnouncements.length),
+            }, childCount: _announcements.length),
           ),
       ],
     );

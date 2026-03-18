@@ -1,5 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,17 +9,18 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/permission_storage.dart';
 
 class AnnouncementCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
+  final String? text;
+  final String? imagePath;
+  final String? feeling;
 
-  const AnnouncementCard({
-    super.key,
-    required this.title,
-    required this.subtitle,
-  });
+  const AnnouncementCard({super.key, this.text, this.imagePath, this.feeling});
 
   @override
   Widget build(BuildContext context) {
+    final hasText = text != null && text!.trim().isNotEmpty;
+    final hasImage = imagePath != null && imagePath!.trim().isNotEmpty;
+    final hasFeeling = feeling != null && feeling!.trim().isNotEmpty;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       elevation: 2,
@@ -27,14 +30,36 @@ class AnnouncementCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            RichText(
-              text: TextSpan(
-                style: Theme.of(context).textTheme.bodyMedium,
-                children: _linkifiedTextSpans(subtitle, context),
+            if (hasText)
+              RichText(
+                text: TextSpan(
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  children: _linkifiedTextSpans(text!, context),
+                ),
               ),
-            ),
+            if (hasImage) ...[
+              if (hasText) const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  File(imagePath!),
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      color: Theme.of(context).colorScheme.surfaceContainer,
+                      child: const Text('Image is no longer available.'),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (hasFeeling) ...[
+              if (hasText || hasImage) const SizedBox(height: 12),
+              Chip(label: Text(feeling!)),
+            ],
+            if (!hasText && !hasImage && !hasFeeling) const Text('No content.'),
           ],
         ),
       ),
