@@ -5,7 +5,7 @@ This file defines how coding agents should work in this repository.
 Follow these rules to make safe, minimal, and testable changes.
 
 ## Project Snapshot
-- Stack: Flutter (Dart), Material UI.
+- Stack: Flutter (Dart), Material UI, Shadcn_ui.
 - Data layer: local persistence via SharedPreferences.
 - Architecture: screen-driven UI with singleton storage services.
 - Main entry and route shell: lib/main.dart.
