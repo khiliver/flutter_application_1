@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
+
 import '../../constants.dart';
 import '../../widgets/app_header.dart';
-import '../../widgets/custom_button.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -11,21 +12,25 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<ShadFormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   final _birthdateController = TextEditingController();
   String _gender = 'Male';
+  bool _isInitialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_isInitialized) return;
+
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
     final initialName = args?['name'] ?? 'John Appleseed';
     final initialEmail = args?['email'] ?? 'john@example.com';
     _nameController = TextEditingController(text: initialName);
     _emailController = TextEditingController(text: initialEmail);
+    _isInitialized = true;
   }
 
   void _save() {
@@ -37,87 +42,114 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _birthdateController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(showBack: true, title: 'Edit Profile'),
-      body: Padding(
+      appBar: const AppHeader(showBack: true),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Form(
+        child: ShadForm(
           key: _formKey,
-          child: ListView(
-            children: [
-              SizedBox(
-                width: kFormElementWidth,
-                child: TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Enter name' : null,
+          child: Center(
+            child: Container(
+              constraints: const BoxConstraints(
+                maxWidth: kFormElementWidth + 80,
+              ),
+              child: ShadCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      constraints: const BoxConstraints(
+                        maxWidth: kFormElementWidth,
+                      ),
+                      child: ShadInputFormField(
+                        controller: _nameController,
+                        placeholder: const Text('Name'),
+                        validator: (v) {
+                          if (v.isEmpty) return 'Enter name';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      constraints: const BoxConstraints(
+                        maxWidth: kFormElementWidth,
+                      ),
+                      child: ShadInputFormField(
+                        controller: _emailController,
+                        placeholder: const Text('Email'),
+                        validator: (v) {
+                          if (v.isEmpty) return 'Enter email';
+                          if (!v.contains('@')) return 'Invalid email';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      constraints: const BoxConstraints(
+                        maxWidth: kFormElementWidth,
+                      ),
+                      child: ShadInput(
+                        controller: _birthdateController,
+                        placeholder: const Text('Birthdate'),
+                        readOnly: true,
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime(1990),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime.now(),
+                          );
+                          if (date != null) {
+                            _birthdateController.text = date
+                                .toLocal()
+                                .toString()
+                                .split(' ')[0];
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      constraints: const BoxConstraints(
+                        maxWidth: kFormElementWidth,
+                      ),
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _gender,
+                        decoration: const InputDecoration(labelText: 'Gender'),
+                        items: ['Male', 'Female', 'Other']
+                            .map(
+                              (g) => DropdownMenuItem(value: g, child: Text(g)),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() {
+                          if (v != null) _gender = v;
+                        }),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.center,
+                      child: ShadButton.outline(
+                        onPressed: _save,
+                        leading: const Icon(Icons.save),
+                        child: const Text('Submit'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: kFormElementWidth,
-                child: TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Enter email';
-                    if (!v.contains('@')) return 'Invalid email';
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: kFormElementWidth,
-                child: TextFormField(
-                  controller: _birthdateController,
-                  decoration: const InputDecoration(labelText: 'Birthdate'),
-                  onTap: () async {
-                    FocusScope.of(context).requestFocus(FocusNode());
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime(1990),
-                      firstDate: DateTime(1900),
-                      lastDate: DateTime.now(),
-                    );
-                    if (date != null) {
-                      _birthdateController.text = date
-                          .toLocal()
-                          .toString()
-                          .split(' ')[0];
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: kFormElementWidth,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _gender,
-                  decoration: const InputDecoration(labelText: 'Gender'),
-                  items: ['Male', 'Female', 'Other']
-                      .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                      .toList(),
-                  onChanged: (v) => setState(() {
-                    if (v != null) _gender = v;
-                  }),
-                ),
-              ),
-              const SizedBox(height: 24),
-              // use custom button for consistent labels/styles
-              Align(
-                alignment: Alignment.center,
-                child: CustomButton(
-                  label: 'Submit',
-                  icon: const Icon(Icons.save),
-                  onPressed: _save,
-                  fullWidth: false,
-                  outlined: true,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

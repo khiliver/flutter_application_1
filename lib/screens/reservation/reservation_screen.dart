@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../models/reservation.dart';
 import '../../services/notification_storage.dart';
@@ -133,42 +134,47 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
   Future<ReservationItem?> _showEditDialog(ReservationItem reservation) async {
     final titleController = TextEditingController(text: reservation.title);
     var status = reservation.status;
+    final formKey = GlobalKey<ShadFormState>();
 
     return showDialog<ReservationItem>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: Text('Edit ${reservation.type.label} reservation'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: InputDecoration(
-                  labelText: reservation.type == ReservationType.book
-                      ? 'Book title'
-                      : 'Name',
-                  hintText: reservation.type == ReservationType.book
-                      ? 'e.g. Flutter for Beginners'
-                      : 'e.g. Seat A1',
-                ),
+          content: ShadCard(
+            padding: const EdgeInsets.all(12),
+            child: ShadForm(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ShadInput(
+                    controller: titleController,
+                    placeholder: Text(
+                      reservation.type == ReservationType.book
+                          ? 'Book title'
+                          : 'Name',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<ReservationStatus>(
+                    initialValue: status,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: ReservationStatus.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                    onChanged: (s) {
+                      if (s != null) {
+                        status = s;
+                      }
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<ReservationStatus>(
-                initialValue: status,
-                decoration: const InputDecoration(labelText: 'Status'),
-                items: ReservationStatus.values
-                    .map(
-                      (s) => DropdownMenuItem(value: s, child: Text(s.label)),
-                    )
-                    .toList(),
-                onChanged: (s) {
-                  if (s != null) {
-                    status = s;
-                  }
-                },
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -218,6 +224,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     final schoolOriginController = TextEditingController();
 
     DateTime? selectedDate;
+    final formKey = GlobalKey<ShadFormState>();
 
     String formatDate(DateTime? date) {
       if (date == null) return 'Choose date';
@@ -232,88 +239,81 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             return AlertDialog(
               title: Text('Reserve ${type.label}'),
               content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: InputDecoration(
-                        labelText: type == ReservationType.book
-                            ? 'Book title'
-                            : 'Name',
-                        hintText: type == ReservationType.book
-                            ? 'e.g. Flutter for Beginners'
-                            : 'e.g. Seat A1',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: firstNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'First Name',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: middleNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Middle Name',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: surnameController,
-                      decoration: const InputDecoration(labelText: 'Surname'),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
+                child: ShadCard(
+                  padding: const EdgeInsets.all(12),
+                  child: ShadForm(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: Text(
-                            'Date to reserve: ${formatDate(selectedDate)}',
+                        ShadInput(
+                          controller: titleController,
+                          placeholder: Text(
+                            type == ReservationType.book
+                                ? 'Book title'
+                                : 'Name',
                           ),
                         ),
-                        TextButton(
-                          onPressed: () async {
-                            final now = DateTime.now();
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: selectedDate ?? now,
-                              firstDate: now,
-                              lastDate: now.add(const Duration(days: 365)),
-                            );
-                            if (picked != null) {
-                              selectedDate = picked;
-                              setStateDialog(() {});
-                            }
-                          },
-                          child: const Text('Pick'),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: firstNameController,
+                          placeholder: const Text('First Name'),
+                        ),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: middleNameController,
+                          placeholder: const Text('Middle Name'),
+                        ),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: surnameController,
+                          placeholder: const Text('Surname'),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Date to reserve: ${formatDate(selectedDate)}',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: selectedDate ?? now,
+                                  firstDate: now,
+                                  lastDate: now.add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  selectedDate = picked;
+                                  setStateDialog(() {});
+                                }
+                              },
+                              child: const Text('Pick'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: schoolIdController,
+                          placeholder: const Text('School ID / Student ID'),
+                        ),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: cellphoneController,
+                          placeholder: const Text('Cellphone Number'),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 12),
+                        ShadInput(
+                          controller: schoolOriginController,
+                          placeholder: const Text('From School'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: schoolIdController,
-                      decoration: const InputDecoration(
-                        labelText: 'School ID / Student ID',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: cellphoneController,
-                      decoration: const InputDecoration(
-                        labelText: 'Cellphone Number',
-                      ),
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: schoolOriginController,
-                      decoration: const InputDecoration(
-                        labelText: 'From School',
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               actions: [
@@ -363,6 +363,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     String? initialValue,
   }) async {
     final controller = TextEditingController(text: initialValue ?? '');
+    final formKey = GlobalKey<ShadFormState>();
     return showDialog<String>(
       context: context,
       builder: (context) {
@@ -370,13 +371,16 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           title: Text(
             '${initialValue == null ? 'Reserve' : 'Edit'} ${type.label}',
           ),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: type == ReservationType.book ? 'Book title' : 'Name',
-              hintText: type == ReservationType.book
-                  ? 'e.g. Flutter for Beginners'
-                  : 'e.g. Seat A1',
+          content: ShadCard(
+            padding: const EdgeInsets.all(12),
+            child: ShadForm(
+              key: formKey,
+              child: ShadInput(
+                controller: controller,
+                placeholder: Text(
+                  type == ReservationType.book ? 'Book title' : 'Name',
+                ),
+              ),
             ),
           ),
           actions: [

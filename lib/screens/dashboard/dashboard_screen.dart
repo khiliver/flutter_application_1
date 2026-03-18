@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../models/reservation.dart';
 import '../../services/account_storage.dart';
 import '../../services/announcement_storage.dart';
+import '../../services/reservation_storage.dart';
 import '../../widgets/app_header.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -22,8 +25,12 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final bool isManager =
       widget.role.toLowerCase() == 'admin' ||
-      widget.role.toLowerCase() == 'librarian';
+      widget.role.toLowerCase() == 'librarian' ||
+      widget.role.toLowerCase() == 'super admin';
   late Future<List<Account>> _accountsFuture;
+  late Future<List<ReservationItem>> _reservationsFuture;
+
+  bool get _isSuperAdmin => widget.role.toLowerCase() == 'super admin';
 
   // Announcement post state (only shown to admins)
   final TextEditingController _announcementBodyController =
@@ -63,10 +70,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _reloadAccounts();
+    _reloadReservations();
   }
 
   void _reloadAccounts() {
     _accountsFuture = AccountStorage.instance.getAccounts();
+  }
+
+  void _reloadReservations() {
+    _reservationsFuture = ReservationStorage.instance.getReservations();
   }
 
   static const _topBooks = [
@@ -90,6 +102,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'day': 'Thu', 'count': 90},
     {'day': 'Fri', 'count': 78},
   ];
+
+  static const _assignableRoles = ['User', 'Librarian', 'Admin'];
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +143,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   _buildTrendHeader(),
                   const SizedBox(height: 8),
-                  _buildLineChart(),
+                  FutureBuilder<List<ReservationItem>>(
+                    future: _reservationsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      final reservations = snapshot.data ?? <ReservationItem>[];
+                      return _buildLineChart(reservations);
+                    },
+                  ),
                   const SizedBox(height: 24),
                   _buildSectionTitle('User Management'),
                   FutureBuilder<List<Account>>(
@@ -139,14 +166,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         return const Center(child: CircularProgressIndicator());
                       }
                       final accounts = snapshot.data ?? [];
-                      if (accounts.isEmpty) {
+                      final visibleAccounts = _isSuperAdmin
+                          ? accounts
+                          : accounts
+                                .where(
+                                  (a) => a.role.toLowerCase() != 'super admin',
+                                )
+                                .toList();
+                      if (visibleAccounts.isEmpty) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
                           child: Text('No created accounts yet.'),
                         );
                       }
                       return Column(
-                        children: accounts
+                        children: visibleAccounts
                             .map((a) => _buildAccountTile(context, a))
                             .toList(),
                       );
@@ -170,11 +204,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   );
 
   Widget _buildBookTile(Map<String, Object> book) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(book['title'] as String),
-        trailing: Text('${book['count']} reservations'),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ShadCard(
+        padding: const EdgeInsets.all(12),
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(book['title'] as String),
+          trailing: Text('${book['count']} reservations'),
+        ),
       ),
     );
   }
@@ -186,22 +224,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: data.map((entry) {
         return SizedBox(
           width: 140,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry[labelKey] as String,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${entry['count']} users (students/faculty/staff/visitors)',
-                  ),
-                ],
-              ),
+          child: ShadCard(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry[labelKey] as String,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${entry['count']} users (students/faculty/staff/visitors)',
+                ),
+              ],
             ),
           ),
         );
@@ -209,148 +245,184 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildLineChart() {
-    // Multi-series chart showing all available dashboard counts.
-    // Ensure all series span the same X range so lines don't appear "cut".
-    final maxLength = _dailyStudents.length;
+  Widget _buildLineChart(List<ReservationItem> reservations) {
+    // Plot weekly reservation counts grouped by reservation type.
+    final maxLength = 7;
 
-    final dateSeed =
-        _selectedGraphDate.year * 10000 +
-        _selectedGraphDate.month * 100 +
-        _selectedGraphDate.day;
     final weekDates = List<DateTime>.generate(
       maxLength,
       (index) =>
           _selectedGraphDate.subtract(Duration(days: maxLength - 1 - index)),
     );
 
-    final dailySpots = _dailyStudents.asMap().entries.map((entry) {
-      final index = entry.key.toDouble();
-      final baseCount = (entry.value['count'] as int);
-      final adjustedCount = (baseCount + ((dateSeed + entry.key * 3) % 11) - 5)
-          .clamp(5, 120);
-      final count = adjustedCount.toDouble();
-      return FlSpot(index, count);
-    }).toList();
-
-    final hourlyCounts = _hourlyStudents.asMap().entries.map((entry) {
-      final baseCount = _hourlyStudents[entry.key]['count'] as int;
-      final adjustedCount = (baseCount + ((dateSeed + entry.key * 5) % 9) - 4)
-          .clamp(4, 60);
-      return adjustedCount.toDouble();
-    }).toList();
-    while (hourlyCounts.length < maxLength) {
-      hourlyCounts.add(hourlyCounts.isNotEmpty ? hourlyCounts.last : 0);
+    bool sameDay(DateTime a, DateTime b) {
+      return a.year == b.year && a.month == b.month && a.day == b.day;
     }
-    final hourlySpots = hourlyCounts.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), entry.value);
-    }).toList();
 
-    final bookCounts = _topBooks.asMap().entries.map((entry) {
-      final baseCount = _topBooks[entry.key]['count'] as int;
-      final adjustedCount = (baseCount + ((dateSeed + entry.key * 7) % 10) - 4)
-          .clamp(3, 80);
-      return adjustedCount.toDouble();
-    }).toList();
-    while (bookCounts.length < maxLength) {
-      bookCounts.add(bookCounts.isNotEmpty ? bookCounts.last : 0);
+    List<FlSpot> buildTypeSpots(ReservationType type) {
+      return weekDates.asMap().entries.map((entry) {
+        final index = entry.key.toDouble();
+        final day = entry.value;
+        final count = reservations
+            .where((r) {
+              final activityDate = r.reservationDate ?? r.createdAt;
+              return r.type == type && sameDay(activityDate, day);
+            })
+            .length
+            .toDouble();
+        return FlSpot(index, count);
+      }).toList();
     }
-    final bookSpots = bookCounts.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), entry.value);
-    }).toList();
+
+    final seatSpots = buildTypeSpots(ReservationType.seat);
+    final roomSpots = buildTypeSpots(ReservationType.discussionRoom);
+    final bookSpots = buildTypeSpots(ReservationType.book);
 
     final maxY = [
-      ...dailySpots.map((s) => s.y),
-      ...hourlyCounts,
-      ...bookCounts,
+      ...seatSpots.map((s) => s.y),
+      ...roomSpots.map((s) => s.y),
+      ...bookSpots.map((s) => s.y),
     ].fold<double>(0, (prev, v) => v > prev ? v : prev);
-    final chartMaxY = maxY < 10 ? 10.0 : maxY;
+    final chartMaxY = maxY < 1 ? 1.0 : (maxY + 1);
+    final yInterval = chartMaxY <= 5 ? 1.0 : (chartMaxY / 5).ceilToDouble();
 
-    return SizedBox(
-      height: 220,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: LineChart(
-            LineChartData(
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: chartMaxY / 5,
-              ),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 40,
-                    interval: chartMaxY / 5,
-                    getTitlesWidget: (value, meta) => Text(
-                      value.toInt().toString(),
-                      style: const TextStyle(fontSize: 10),
+    return ShadCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 220,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: yInterval,
+                ),
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        final dateIndex = spot.x.toInt();
+                        final date = weekDates[dateIndex];
+                        final seriesLabel = switch (spot.barIndex) {
+                          0 => 'Seat',
+                          1 => 'Room',
+                          _ => 'Book',
+                        };
+                        return LineTooltipItem(
+                          '${date.month}/${date.day}\n$seriesLabel: ${spot.y.toInt()}',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      interval: yInterval,
+                      getTitlesWidget: (value, meta) => Text(
+                        value.toInt().toString(),
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= weekDates.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final date = weekDates[index];
+                        return Text(
+                          '${date.month}/${date.day}',
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                      interval: 1,
                     ),
                   ),
                 ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      final index = value.toInt();
-                      if (index < 0 || index >= weekDates.length) {
-                        return const SizedBox.shrink();
-                      }
-                      final date = weekDates[index];
-                      return Text(
-                        '${date.month}/${date.day}',
-                        style: const TextStyle(fontSize: 10),
-                      );
-                    },
-                    interval: 1,
+                minX: 0,
+                maxX: (maxLength - 1).toDouble(),
+                minY: 0,
+                maxY: chartMaxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: seatSpots,
+                    isCurved: true,
+                    dotData: FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withAlpha((0.12 * 255).round()),
+                    ),
+                    color: Colors.blue,
+                    barWidth: 3,
                   ),
-                ),
+                  LineChartBarData(
+                    spots: roomSpots,
+                    isCurved: true,
+                    dotData: FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.green.withAlpha((0.12 * 255).round()),
+                    ),
+                    color: Colors.green,
+                    barWidth: 3,
+                  ),
+                  LineChartBarData(
+                    spots: bookSpots,
+                    isCurved: true,
+                    dotData: FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.orange.withAlpha((0.12 * 255).round()),
+                    ),
+                    color: Colors.orange,
+                    barWidth: 3,
+                  ),
+                ],
               ),
-              minX: 0,
-              maxX: (_dailyStudents.length - 1).toDouble(),
-              minY: 0,
-              maxY: chartMaxY,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: dailySpots,
-                  isCurved: true,
-                  dotData: FlDotData(show: true),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: Colors.blue.withAlpha((0.2 * 255).round()),
-                  ),
-                  color: Colors.blue,
-                  barWidth: 3,
-                ),
-                LineChartBarData(
-                  spots: hourlySpots,
-                  isCurved: true,
-                  dotData: FlDotData(show: true),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: Colors.green.withAlpha((0.2 * 255).round()),
-                  ),
-                  color: Colors.green,
-                  barWidth: 3,
-                ),
-                LineChartBarData(
-                  spots: bookSpots,
-                  isCurved: true,
-                  dotData: FlDotData(show: true),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: Colors.orange.withAlpha((0.2 * 255).round()),
-                  ),
-                  color: Colors.orange,
-                  barWidth: 3,
-                ),
-              ],
             ),
           ),
-        ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _buildLegendItem(Colors.blue, 'Seat'),
+              _buildLegendItem(Colors.green, 'Discussion Room'),
+              _buildLegendItem(Colors.orange, 'Book'),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
     );
   }
 
@@ -496,9 +568,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: ShadCard(
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
@@ -507,13 +579,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const CircleAvatar(radius: 18, child: Icon(Icons.person)),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(
+                      child: ShadInput(
                         controller: _announcementBodyController,
                         maxLines: 1,
-                        decoration: const InputDecoration(
-                          hintText: "What's on your mind?",
-                          border: InputBorder.none,
-                        ),
+                        placeholder: const Text("What's on your mind?"),
                       ),
                     ),
                   ],
@@ -579,19 +648,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Divider(height: 24),
                 Row(
                   children: [
-                    TextButton.icon(
+                    ShadButton.outline(
                       onPressed: _isPostingAnnouncement ? null : _pickMedia,
-                      icon: const Icon(Icons.photo),
-                      label: const Text('Photo'),
+                      leading: const Icon(Icons.photo),
+                      child: const Text('Photo'),
                     ),
                     const SizedBox(width: 8),
-                    TextButton.icon(
+                    ShadButton.outline(
                       onPressed: _isPostingAnnouncement ? null : _pickFeeling,
-                      icon: const Icon(Icons.emoji_emotions),
-                      label: const Text('Feeling'),
+                      leading: const Icon(Icons.emoji_emotions),
+                      child: const Text('Feeling'),
                     ),
                     const Spacer(),
-                    ElevatedButton(
+                    ShadButton(
                       onPressed: _isPostingAnnouncement
                           ? null
                           : _postAnnouncement,
@@ -621,28 +690,159 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Widget _buildAccountTile(BuildContext context, Account account) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(account.name),
-        subtitle: Text(
-          '${account.role}${account.userType != null ? ' • ${account.userType}' : ''}',
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete, color: Colors.redAccent),
-          tooltip: 'Remove user',
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            await AccountStorage.instance.removeAccount(account.email);
-            if (!mounted) return;
-            messenger.showSnackBar(
-              SnackBar(content: Text('Removed ${account.name}')),
+  Future<void> _editAccountRole(Account account) async {
+    if (!_isSuperAdmin) {
+      return;
+    }
+
+    var selectedRole = account.role;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Edit role for ${account.name}'),
+              content: DropdownButtonFormField<String>(
+                initialValue: selectedRole,
+                decoration: const InputDecoration(labelText: 'Role'),
+                items: _assignableRoles
+                    .map(
+                      (role) =>
+                          DropdownMenuItem(value: role, child: Text(role)),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() {
+                      selectedRole = value;
+                    });
+                  }
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(selectedRole),
+                  child: const Text('Save'),
+                ),
+              ],
             );
-            setState(() {
-              _reloadAccounts();
-            });
           },
+        );
+      },
+    );
+
+    if (result == null || result == account.role) {
+      return;
+    }
+
+    final updated = await AccountStorage.instance.updateAccountRole(
+      account.email,
+      result,
+      actingUserRole: widget.role,
+    );
+
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (!updated) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not update role. Only signed-in Super Admin can assign roles, or the account was changed.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    messenger.showSnackBar(
+      SnackBar(content: Text('Updated ${account.name} to $result.')),
+    );
+    setState(_reloadAccounts);
+  }
+
+  Future<void> _deleteAccount(Account account) async {
+    if (!_isSuperAdmin) {
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete account'),
+        content: Text('Delete ${account.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    final removed = await AccountStorage.instance.removeAccount(account.email);
+
+    if (!mounted) return;
+
+    if (!removed) {
+      final isSuperAdmin = account.role.toLowerCase() == 'super admin';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isSuperAdmin
+                ? 'Cannot delete the only Super Admin account.'
+                : 'Could not remove account. It may have been changed already.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Removed ${account.name}')));
+    setState(_reloadAccounts);
+  }
+
+  Widget _buildAccountTile(BuildContext context, Account account) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ShadCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(account.name),
+          subtitle: Text(
+            '${account.role}${account.userType != null ? ' • ${account.userType}' : ''}',
+          ),
+          trailing: _isSuperAdmin
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ShadButton.ghost(
+                      onPressed: () => _editAccountRole(account),
+                      child: const Icon(Icons.edit, color: Colors.blueAccent),
+                    ),
+                    ShadButton.ghost(
+                      onPressed: () => _deleteAccount(account),
+                      child: const Icon(Icons.delete, color: Colors.redAccent),
+                    ),
+                  ],
+                )
+              : null,
         ),
       ),
     );

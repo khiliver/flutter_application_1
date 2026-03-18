@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
+
 import '../../constants.dart';
 import '../../services/account_storage.dart';
 import '../../services/notification_storage.dart';
-import '../../widgets/custom_button.dart';
-import '../../widgets/custom_textfield.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,14 +16,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<ShadFormState>();
 
-  // signup-specific state
-  String _signUpRole = 'User'; // User, Librarian, Admin
-  String _signUpCategory =
-      'Student'; // for regular users: Student/Faculty/Visitor
-
-  // toggles between sign in and sign up
+  String _signUpCategory = 'Student';
   bool _isSignIn = true;
 
   Future<void> _attemptLogin() async {
@@ -67,13 +62,12 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // register
     final account = Account(
       email: email,
       password: password,
       name: _nameController.text.trim(),
-      role: _signUpRole,
-      userType: _signUpRole == 'User' ? _signUpCategory : null,
+      role: 'User',
+      userType: _signUpCategory,
     );
 
     final wasAdded = await AccountStorage.instance.addAccount(account);
@@ -87,7 +81,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Notify admins when a new account is created.
     await NotificationStorage.instance.addNotification(
       AppNotification(
         title: 'New user registered',
@@ -113,7 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
     await Navigator.of(context).pushNamed('/forgotPassword');
     if (!mounted) return;
 
-    // when returned, reset form and ensure sign-in mode
     _emailController.clear();
     _passwordController.clear();
     _nameController.clear();
@@ -123,119 +115,85 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // no appbar on login; show logo instead
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Form(
+        child: ShadForm(
           key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // meaning subtitle above the logo
-              const Text(
-                'Research and Information Search Assistant',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.blueAccent),
-              ),
-              const SizedBox(height: 8),
-              // app logo at top (slightly smaller)
-              Image.asset('assets/Risa_logo.png', height: 78),
-              const SizedBox(height: 24),
-              // toggle between sign in / sign up
-              ToggleButtons(
-                isSelected: [_isSignIn, !_isSignIn],
-                onPressed: (index) {
-                  // clear controllers when switching modes so values don't carry over
-                  _emailController.clear();
-                  _passwordController.clear();
-                  _nameController.clear();
-                  // reset signup selectors
-                  _signUpRole = 'User';
-                  _signUpCategory = 'Student';
-                  setState(() {
-                    _isSignIn = index == 0;
-                  });
-                },
-                selectedColor: Colors.white,
-                fillColor: Colors.blue,
-                borderColor: Colors.blue,
-                selectedBorderColor: Colors.blue,
-                borderRadius: BorderRadius.circular(4),
-                children: const [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('Sign In'),
+          child: Center(
+            child: ShadCard(
+              width: kFormElementWidth + 32,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Research and Information Search Assistant',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.blueAccent),
                   ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('Sign Up'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // fields and button animated when toggling
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) =>
-                    FadeTransition(opacity: animation, child: child),
-                child: Column(
-                  key: ValueKey<bool>(_isSignIn),
-                  children: [
-                    if (!_isSignIn) ...[
-                      Align(
-                        alignment: Alignment.center,
-                        child: CustomTextField(
-                          controller: _nameController,
-                          labelText: 'Full Name',
-                          width: kFormElementWidth,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return 'Please enter full name';
-                            }
-                            return null;
-                          },
-                        ),
+                  const SizedBox(height: 8),
+                  Image.asset('assets/Risa_logo.png', height: 78),
+                  const SizedBox(height: 24),
+                  ToggleButtons(
+                    isSelected: [_isSignIn, !_isSignIn],
+                    onPressed: (index) {
+                      _emailController.clear();
+                      _passwordController.clear();
+                      _nameController.clear();
+                      _signUpCategory = 'Student';
+                      setState(() {
+                        _isSignIn = index == 0;
+                      });
+                    },
+                    selectedColor: Colors.white,
+                    fillColor: Colors.blue,
+                    borderColor: Colors.blue,
+                    selectedBorderColor: Colors.blue,
+                    borderRadius: BorderRadius.circular(4),
+                    children: const [
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text('Sign In'),
                       ),
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: kFormElementWidth,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _signUpRole,
-                            decoration: const InputDecoration(
-                              labelText: 'Role',
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text('Sign Up'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(opacity: animation, child: child),
+                    child: Column(
+                      key: ValueKey<bool>(_isSignIn),
+                      children: [
+                        if (!_isSignIn) ...[
+                          SizedBox(
+                            width: kFormElementWidth,
+                            child: ShadInputFormField(
+                              controller: _nameController,
+                              placeholder: const Text('Full Name'),
+                              validator: (v) {
+                                if (v.isEmpty) {
+                                  return 'Please enter full name';
+                                }
+                                return null;
+                              },
                             ),
-                            items: ['User', 'Librarian', 'Admin']
-                                .map(
-                                  (r) => DropdownMenuItem(
-                                    value: r,
-                                    child: Text(r),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              if (v != null) {
-                                setState(() {
-                                  _signUpRole = v;
-                                  // if role changes away from regular user,
-                                  // reset category to default
-                                  if (_signUpRole != 'User') {
-                                    _signUpCategory = 'Student';
-                                  }
-                                });
-                              }
-                            },
                           ),
-                        ),
-                      ),
-                      if (_signUpRole == 'User') ...[
-                        const SizedBox(height: 16),
-                        Align(
-                          alignment: Alignment.center,
-                          child: SizedBox(
+                          const SizedBox(height: 16),
+                          SizedBox(
                             width: kFormElementWidth,
                             child: DropdownButtonFormField<String>(
                               initialValue: _signUpCategory,
@@ -257,68 +215,61 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                             ),
                           ),
+                          const SizedBox(height: 16),
+                        ],
+                        SizedBox(
+                          width: kFormElementWidth,
+                          child: ShadInputFormField(
+                            controller: _emailController,
+                            placeholder: const Text('Email'),
+                            validator: (v) {
+                              if (v.isEmpty) {
+                                return 'Please enter email';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: kFormElementWidth,
+                          child: ShadInputFormField(
+                            controller: _passwordController,
+                            placeholder: const Text('Password'),
+                            obscureText: true,
+                            validator: (v) {
+                              if (v.length < 6) {
+                                return 'Password must be at least 6 characters';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        if (_isSignIn) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ShadButton.link(
+                              onPressed: _goToForgotPassword,
+                              child: const Text('Forgot Password?'),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ] else
+                          const SizedBox(height: 24),
+                        ShadButton.outline(
+                          onPressed: _attemptLogin,
+                          leading: Icon(
+                            _isSignIn ? Icons.login : Icons.app_registration,
+                          ),
+                          child: Text(_isSignIn ? 'Login' : 'Register'),
                         ),
                       ],
-                      const SizedBox(height: 16),
-                    ],
-                    Align(
-                      alignment: Alignment.center,
-                      child: CustomTextField(
-                        controller: _emailController,
-                        labelText: 'Email',
-                        width: kFormElementWidth,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Please enter email';
-                          }
-                          return null;
-                        },
-                      ),
                     ),
-                    const SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.center,
-                      child: CustomTextField(
-                        controller: _passwordController,
-                        labelText: 'Password',
-                        width: kFormElementWidth,
-                        obscureText: true, // toggle handled inside widget
-                        validator: (v) {
-                          if (v == null || v.length < 6) {
-                            return 'Password must be at least 6 characters';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    if (_isSignIn) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _goToForgotPassword,
-                          child: const Text('Forgot Password?'),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ] else
-                      const SizedBox(height: 24),
-                    Align(
-                      alignment: Alignment.center,
-                      child: CustomButton(
-                        label: _isSignIn ? 'Login' : 'Register',
-                        icon: Icon(
-                          _isSignIn ? Icons.login : Icons.app_registration,
-                        ),
-                        onPressed: _attemptLogin,
-                        fullWidth: false,
-                        outlined: true,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

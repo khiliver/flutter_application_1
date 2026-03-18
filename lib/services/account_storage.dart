@@ -76,6 +76,11 @@ class AccountStorage {
   }
 
   Future<bool> addAccount(Account account) async {
+    if (account.role.toLowerCase() == 'super admin') {
+      final canCreate = await canCreateSuperAdmin();
+      if (!canCreate) return false;
+    }
+
     final existing = await findByEmail(account.email);
     if (existing != null) return false;
     final accounts = await getAccounts();
@@ -84,9 +89,78 @@ class AccountStorage {
     return true;
   }
 
-  Future<void> removeAccount(String email) async {
+  Future<bool> canCreateSuperAdmin({String? exceptEmail}) async {
     final accounts = await getAccounts();
-    accounts.removeWhere((a) => a.email.toLowerCase() == email.toLowerCase());
+    final normalizedExcept = exceptEmail?.toLowerCase();
+    final hasSuperAdmin = accounts.any((a) {
+      if (a.role.toLowerCase() != 'super admin') return false;
+      if (normalizedExcept == null) return true;
+      return a.email.toLowerCase() != normalizedExcept;
+    });
+    return !hasSuperAdmin;
+  }
+
+  Future<bool> updateAccountRole(
+    String email,
+    String role, {
+    required String actingUserRole,
+  }) async {
+    if (actingUserRole.toLowerCase() != 'super admin') {
+      return false;
+    }
+
+    final accounts = await getAccounts();
+    final targetIndex = accounts.indexWhere(
+      (a) => a.email.toLowerCase() == email.toLowerCase(),
+    );
+
+    if (targetIndex == -1) {
+      return false;
+    }
+
+    final current = accounts[targetIndex];
+    final normalizedRole = role.toLowerCase();
+
+    // Super Admin role is protected and cannot be assigned from user management.
+    if (!{'user', 'librarian', 'admin'}.contains(normalizedRole)) {
+      return false;
+    }
+
+    accounts[targetIndex] = Account(
+      email: current.email,
+      password: current.password,
+      name: current.name,
+      role: role,
+      userType: normalizedRole == 'user'
+          ? (current.userType ?? 'Student')
+          : null,
+    );
+
     await _saveAccounts(accounts);
+    return true;
+  }
+
+  Future<bool> removeAccount(String email) async {
+    final accounts = await getAccounts();
+    final targetIndex = accounts.indexWhere(
+      (a) => a.email.toLowerCase() == email.toLowerCase(),
+    );
+    if (targetIndex == -1) {
+      return false;
+    }
+
+    final target = accounts[targetIndex];
+    if (target.role.toLowerCase() == 'super admin') {
+      final superAdminCount = accounts
+          .where((a) => a.role.toLowerCase() == 'super admin')
+          .length;
+      if (superAdminCount <= 1) {
+        return false;
+      }
+    }
+
+    accounts.removeAt(targetIndex);
+    await _saveAccounts(accounts);
+    return true;
   }
 }

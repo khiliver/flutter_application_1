@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
@@ -21,27 +22,37 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'RISA',
-      theme: AppTheme.lightTheme,
-      initialRoute: '/login',
-      debugShowCheckedModeBanner: false,
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/main': (context) {
-          final args =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, String>?;
-          return MainScreen(
-            initialEmail: args?['email'],
-            initialName: args?['name'],
-            initialRole: args?['role'],
-            initialUserType: args?['userType'],
-          );
+    return ShadApp.custom(
+      theme: ShadThemeData(
+        brightness: Brightness.light,
+        colorScheme: const ShadSlateColorScheme.light(),
+      ),
+      darkTheme: ShadThemeData(
+        brightness: Brightness.dark,
+        colorScheme: const ShadSlateColorScheme.dark(),
+      ),
+      appBuilder: (context) => MaterialApp(
+        title: 'RISA',
+        theme: AppTheme.lightTheme,
+        initialRoute: '/login',
+        debugShowCheckedModeBanner: false,
+        routes: {
+          '/login': (context) => const LoginScreen(),
+          '/main': (context) {
+            final args =
+                ModalRoute.of(context)?.settings.arguments
+                    as Map<String, String>?;
+            return MainScreen(
+              initialEmail: args?['email'],
+              initialName: args?['name'],
+              initialRole: args?['role'],
+              initialUserType: args?['userType'],
+            );
+          },
+          '/forgotPassword': (context) => const ForgotPasswordScreen(),
+          '/editProfile': (context) => const EditProfileScreen(),
         },
-        '/forgotPassword': (context) => const ForgotPasswordScreen(),
-        '/editProfile': (context) => const EditProfileScreen(),
-      },
+      ),
     );
   }
 }
@@ -71,8 +82,11 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    final normalizedRole = (widget.initialRole ?? '').toLowerCase();
     final isManager =
-        widget.initialRole == 'Admin' || widget.initialRole == 'Librarian';
+        normalizedRole == 'admin' ||
+        normalizedRole == 'librarian' ||
+        normalizedRole == 'super admin';
 
     _tabs = [
       if (isManager)
