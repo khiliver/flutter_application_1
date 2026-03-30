@@ -1,68 +1,93 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../models/reservation.dart';
-
-const _kReservationsKey = 'risa_reservations_v1';
 
 class ReservationStorage {
   ReservationStorage._();
 
   static final ReservationStorage instance = ReservationStorage._();
 
-  Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
+  CollectionReference<Map<String, dynamic>>? get _collection {
+    if (Firebase.apps.isEmpty) {
+      return null;
+    }
+    return FirebaseFirestore.instance.collection('reservations');
+  }
+
+  bool get isReady => _collection != null;
+
+  Map<String, dynamic> _toFirestore(ReservationItem reservation) =>
+      reservation.toJson()..['updatedAt'] = FieldValue.serverTimestamp();
+
+  ReservationItem? _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    try {
+      final data = doc.data();
+      if (data == null) return null;
+      data['id'] = doc.id;
+      return ReservationItem.fromJson(data);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<List<ReservationItem>> getReservations() async {
-    final prefs = await _prefs;
-    final raw = prefs.getStringList(_kReservationsKey);
-    if (raw == null) return [];
-    final list = raw
-        .map(
-          (s) =>
-              ReservationItem.fromJson(jsonDecode(s) as Map<String, dynamic>),
-        )
+    if (_collection == null) return [];
+
+    final snapshot = await _collection!
+        .orderBy('createdAt', descending: true)
+        .get(const GetOptions(source: Source.serverAndCache));
+
+    final items = snapshot.docs
+        .map(_fromDoc)
+        .whereType<ReservationItem>()
         .toList();
-    // newest first
-    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
+    return items;
   }
 
   Future<List<ReservationItem>> getReservationsForUser(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
     final all = await getReservations();
     return all
-        .where((r) => r.requesterEmail.toLowerCase() == email.toLowerCase())
+        .where((r) => r.requesterEmail.toLowerCase() == normalizedEmail)
         .toList();
   }
 
   Future<void> addReservation(ReservationItem reservation) async {
-    final prefs = await _prefs;
-    final reservations = await getReservations();
-    reservations.insert(0, reservation);
-    final values = reservations.map((r) => jsonEncode(r.toJson())).toList();
-    await prefs.setStringList(_kReservationsKey, values);
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for reservation writes.');
+    }
+
+    await _collection!.doc(reservation.id).set({
+      ..._toFirestore(reservation),
+      'createdAt': reservation.createdAt,
+    });
   }
 
   Future<void> updateReservation(ReservationItem reservation) async {
-    final prefs = await _prefs;
-    final reservations = await getReservations();
-    final index = reservations.indexWhere((r) => r.id == reservation.id);
-    if (index == -1) return;
-    reservations[index] = reservation;
-    final values = reservations.map((r) => jsonEncode(r.toJson())).toList();
-    await prefs.setStringList(_kReservationsKey, values);
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for reservation writes.');
+    }
+
+    await _collection!.doc(reservation.id).set(_toFirestore(reservation));
   }
 
   Future<void> removeReservation(String id) async {
-    final prefs = await _prefs;
-    final reservations = await getReservations();
-    reservations.removeWhere((r) => r.id == id);
-    final values = reservations.map((r) => jsonEncode(r.toJson())).toList();
-    await prefs.setStringList(_kReservationsKey, values);
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for reservation writes.');
+    }
+
+    await _collection!.doc(id).delete();
   }
 
   Future<void> clearReservations() async {
-    final prefs = await _prefs;
-    await prefs.remove(_kReservationsKey);
+    if (_collection == null) return;
+
+    final snapshot = await _collection!.limit(500).get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
   }
 }

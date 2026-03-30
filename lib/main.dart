@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'screens/auth/login_screen.dart';
@@ -13,8 +14,23 @@ import 'screens/profile/edit_profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/bottom_navbar.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _initializeFirebase();
   runApp(const MainApp());
+}
+
+Future<void> _initializeFirebase() async {
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    // Log and continue in debug/tests so widget tests don't fail, but surface the issue.
+    debugPrint('Firebase initialization failed: $e');
+    assert(() {
+      debugPrint('Firebase init skipped in debug/testing environment.');
+      return true;
+    }());
+  }
 }
 
 class MainApp extends StatelessWidget {
@@ -39,14 +55,14 @@ class MainApp extends StatelessWidget {
         routes: {
           '/login': (context) => const LoginScreen(),
           '/main': (context) {
-            final args =
-                ModalRoute.of(context)?.settings.arguments
-                    as Map<String, String>?;
+            final rawArgs = ModalRoute.of(context)?.settings.arguments;
+            final args = rawArgs is Map ? rawArgs : const <String, dynamic>{};
             return MainScreen(
-              initialEmail: args?['email'],
-              initialName: args?['name'],
-              initialRole: args?['role'],
-              initialUserType: args?['userType'],
+              initialEmail: args['email']?.toString(),
+              initialName: args['name']?.toString(),
+              initialRole: args['role']?.toString(),
+              initialUserType: args['userType']?.toString(),
+              initialAvatarPath: args['avatarPath']?.toString(),
             );
           },
           '/forgotPassword': (context) => const ForgotPasswordScreen(),
@@ -62,6 +78,7 @@ class MainScreen extends StatefulWidget {
   final String? initialName;
   final String? initialRole;
   final String? initialUserType;
+  final String? initialAvatarPath;
 
   const MainScreen({
     super.key,
@@ -69,6 +86,7 @@ class MainScreen extends StatefulWidget {
     this.initialName,
     this.initialRole,
     this.initialUserType,
+    this.initialAvatarPath,
   });
 
   @override
@@ -97,6 +115,7 @@ class _MainScreenState extends State<MainScreen> {
       NotificationsScreen(
         userRole: widget.initialRole ?? '',
         userEmail: widget.initialEmail ?? '',
+        userType: widget.initialUserType,
         onGoToReservations: () => _onTap(3),
       ),
       ReservationsScreen(
@@ -109,6 +128,7 @@ class _MainScreenState extends State<MainScreen> {
         initialName: widget.initialName,
         initialRole: widget.initialRole,
         initialUserType: widget.initialUserType,
+        initialAvatarPath: widget.initialAvatarPath,
       ),
     ];
   }

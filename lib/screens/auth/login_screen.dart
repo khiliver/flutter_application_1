@@ -19,67 +19,158 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<ShadFormState>();
 
   String _signUpCategory = 'Student';
+  String _signUpRole = 'User';
+  bool _canCreateSuperAdmin = false;
   bool _isSignIn = true;
+  bool _obscurePassword = true;
+
+  List<String> get _signUpRoleOptions =>
+      _canCreateSuperAdmin ? const ['User', 'Super Admin'] : const ['User'];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSuperAdminAvailability();
+  }
+
+  Future<void> _refreshSuperAdminAvailability() async {
+    final canCreate = await AccountStorage.instance.canCreateSuperAdmin();
+    if (!mounted) return;
+    setState(() {
+      _canCreateSuperAdmin = canCreate;
+      if (!_canCreateSuperAdmin && _signUpRole.toLowerCase() == 'super admin') {
+        _signUpRole = 'User';
+      }
+    });
+  }
+
+  Future<void> _showResultDialog({
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _attemptLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    if (_isSignIn) {
-      final authenticated = await AccountStorage.instance.authenticate(
-        email,
-        password,
-      );
-      if (!authenticated) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email or password')),
-        );
-        return;
-      }
-
-      final account = await AccountStorage.instance.findByEmail(email);
-      if (account == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Account not found')));
-        return;
-      }
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(
-        '/main',
-        arguments: {
-          'email': account.email,
-          'name': account.name,
-          'role': account.role,
-          if (account.userType != null) 'userType': account.userType!,
-        },
-      );
-      return;
-    }
-
-    final account = Account(
-      email: email,
-      password: password,
-      name: _nameController.text.trim(),
-      role: 'User',
-      userType: _signUpCategory,
-    );
-
-    final wasAdded = await AccountStorage.instance.addAccount(account);
-    if (!wasAdded) {
+    if (!AccountStorage.instance.isReady) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('An account with that email already exists'),
+          content: Text(
+            'Firebase is not initialized. Please check your Google Services setup.',
+          ),
         ),
       );
       return;
     }
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    Account? createdAccount;
+
+    try {
+      if (_isSignIn) {
+        final authenticated = await AccountStorage.instance.authenticate(
+          email,
+          password,
+        );
+        if (!authenticated) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid email or password')),
+          );
+          return;
+        }
+
+        final account = await AccountStorage.instance.findByEmail(email);
+        if (account == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Account not found')));
+          return;
+        }
+
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed(
+          '/main',
+          arguments: {
+            'email': account.email,
+            'name': account.name,
+            'role': account.role,
+            if (account.userType != null) 'userType': account.userType!,
+            if (account.avatarPath != null) 'avatarPath': account.avatarPath!,
+          },
+        );
+        return;
+      }
+
+      final isUserRole = _signUpRole.toLowerCase() == 'user';
+      final existingAccount = await AccountStorage.instance.findByEmail(email);
+      if (existingAccount != null) {
+        await _showResultDialog(
+          title: 'Registration failed',
+          message: 'An account with that email already exists.',
+        );
+        return;
+      }
+
+      if (!isUserRole) {
+        final canCreateSuperAdmin = await AccountStorage.instance
+            .canCreateSuperAdmin();
+        if (!canCreateSuperAdmin) {
+          await _showResultDialog(
+            title: 'Registration failed',
+            message: 'A Super Admin account already exists.',
+          );
+          return;
+        }
+      }
+
+      final account = Account(
+        email: email,
+        password: password,
+        name: _nameController.text.trim(),
+        role: _signUpRole,
+        userType: isUserRole ? _signUpCategory : null,
+      );
+
+      final wasAdded = await AccountStorage.instance.addAccount(account);
+      if (!wasAdded) {
+        await _showResultDialog(
+          title: 'Registration failed',
+          message: 'Could not create account. Please try again.',
+        );
+        return;
+      }
+
+      createdAccount = account;
+    } catch (e) {
+      await _showResultDialog(
+        title: 'Registration failed',
+        message: 'Signup failed: $e',
+      );
+      return;
+    }
+
+    // ignore: unnecessary_cast
+    final Account account = createdAccount as Account;
 
     await NotificationStorage.instance.addNotification(
       AppNotification(
@@ -90,16 +181,18 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
 
-    if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(
-      '/main',
-      arguments: {
-        'email': account.email,
-        'name': account.name,
-        'role': account.role,
-        if (account.userType != null) 'userType': account.userType!,
-      },
+    await _showResultDialog(
+      title: 'Registration successful',
+      message: 'Account created for ${account.email}. You can now sign in.',
     );
+
+    if (!mounted) return;
+    _passwordController.clear();
+    _nameController.clear();
+    _obscurePassword = true;
+    setState(() {
+      _isSignIn = true;
+    });
   }
 
   Future<void> _goToForgotPassword() async {
@@ -109,6 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.clear();
     _passwordController.clear();
     _nameController.clear();
+    _obscurePassword = true;
     setState(() {
       _isSignIn = true;
     });
@@ -150,9 +244,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       _passwordController.clear();
                       _nameController.clear();
                       _signUpCategory = 'Student';
+                      _signUpRole = 'User';
+                      _obscurePassword = true;
                       setState(() {
                         _isSignIn = index == 0;
                       });
+                      if (index == 1) {
+                        _refreshSuperAdminAvailability();
+                      }
                     },
                     selectedColor: Colors.white,
                     fillColor: Colors.blue,
@@ -185,7 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               controller: _nameController,
                               placeholder: const Text('Full Name'),
                               validator: (v) {
-                                if (v.isEmpty) {
+                                if (v.trim().isEmpty) {
                                   return 'Please enter full name';
                                 }
                                 return null;
@@ -196,26 +295,56 @@ class _LoginScreenState extends State<LoginScreen> {
                           SizedBox(
                             width: kFormElementWidth,
                             child: DropdownButtonFormField<String>(
-                              initialValue: _signUpCategory,
+                              initialValue: _signUpRole,
                               decoration: const InputDecoration(
-                                labelText: 'User Type',
+                                labelText: 'Role',
                               ),
-                              items: ['Student', 'Faculty', 'Visitor']
+                              items: _signUpRoleOptions
                                   .map(
-                                    (u) => DropdownMenuItem(
-                                      value: u,
-                                      child: Text(u),
+                                    (role) => DropdownMenuItem(
+                                      value: role,
+                                      child: Text(role),
                                     ),
                                   )
                                   .toList(),
                               onChanged: (v) {
                                 if (v != null) {
-                                  setState(() => _signUpCategory = v);
+                                  setState(() {
+                                    _signUpRole = v;
+                                    if (_signUpRole.toLowerCase() != 'user') {
+                                      _signUpCategory = 'Student';
+                                    }
+                                  });
                                 }
                               },
                             ),
                           ),
                           const SizedBox(height: 16),
+                          if (_signUpRole.toLowerCase() == 'user') ...[
+                            SizedBox(
+                              width: kFormElementWidth,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _signUpCategory,
+                                decoration: const InputDecoration(
+                                  labelText: 'User Type',
+                                ),
+                                items: ['Student', 'Faculty', 'Visitor']
+                                    .map(
+                                      (u) => DropdownMenuItem(
+                                        value: u,
+                                        child: Text(u),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    setState(() => _signUpCategory = v);
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                         ],
                         SizedBox(
                           width: kFormElementWidth,
@@ -223,7 +352,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _emailController,
                             placeholder: const Text('Email'),
                             validator: (v) {
-                              if (v.isEmpty) {
+                              if (v.trim().isEmpty) {
                                 return 'Please enter email';
                               }
                               return null;
@@ -233,16 +362,44 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                         SizedBox(
                           width: kFormElementWidth,
-                          child: ShadInputFormField(
-                            controller: _passwordController,
-                            placeholder: const Text('Password'),
-                            obscureText: true,
-                            validator: (v) {
-                              if (v.length < 6) {
-                                return 'Password must be at least 6 characters';
-                              }
-                              return null;
-                            },
+                          child: Stack(
+                            children: [
+                              ShadInputFormField(
+                                controller: _passwordController,
+                                placeholder: const Text('Password'),
+                                obscureText: _obscurePassword,
+                                validator: (v) {
+                                  final password = v.trim();
+                                  if (password.isEmpty) {
+                                    return 'Please enter password';
+                                  }
+                                  if (!_isSignIn && password.length < 6) {
+                                    return 'Password must be at least 6 characters';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                child: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                  tooltip: _obscurePassword
+                                      ? 'Show password'
+                                      : 'Hide password',
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         if (_isSignIn) ...[

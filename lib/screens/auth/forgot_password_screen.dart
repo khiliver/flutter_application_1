@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants.dart';
+import '../../services/account_storage.dart';
 import '../../widgets/custom_button.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -12,15 +13,64 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _isSending = false;
 
-  void _sendReset() {
-    if (_formKey.currentState?.validate() ?? false) {
-      // TODO: wire up to your auth backend
+  Future<void> _sendReset() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    if (!AccountStorage.instance.isReady) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Firebase is not initialized. Please check your Google Services setup.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final email = _emailController.text.trim();
+
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      final account = await AccountStorage.instance.findByEmail(email);
+      if (!mounted) return;
+
+      if (account == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No account found for that email')),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Password reset link sent')));
       Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not send reset link: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
   @override
@@ -52,8 +102,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               SizedBox(
                 width: kFormElementWidth,
                 child: CustomButton(
-                  label: 'Send Reset Link',
-                  onPressed: _sendReset,
+                  label: _isSending ? 'Sending...' : 'Send Reset Link',
+                  onPressed: _isSending ? null : _sendReset,
                   outlined: true,
                 ),
               ),

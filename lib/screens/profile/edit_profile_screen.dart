@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../constants.dart';
+import '../../services/account_storage.dart';
 import '../../widgets/app_header.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -15,8 +19,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<ShadFormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
+  late String _initialEmail;
   final _birthdateController = TextEditingController();
+  final _picker = ImagePicker();
   String _gender = 'Male';
+  String? _avatarPath;
+  bool _isSaving = false;
   bool _isInitialized = false;
 
   @override
@@ -24,21 +32,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.didChangeDependencies();
     if (_isInitialized) return;
 
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
-    final initialName = args?['name'] ?? 'John Appleseed';
-    final initialEmail = args?['email'] ?? 'john@example.com';
-    _nameController = TextEditingController(text: initialName);
-    _emailController = TextEditingController(text: initialEmail);
+    final rawArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = rawArgs is Map ? rawArgs : const <String, dynamic>{};
+    final initialName = args['name'] ?? 'John Appleseed';
+    final initialEmail = args['email'] ?? 'john@example.com';
+    _initialEmail = initialEmail.toString();
+    _avatarPath = args['avatarPath']?.toString();
+    _nameController = TextEditingController(text: initialName.toString());
+    _emailController = TextEditingController(text: _initialEmail);
     _isInitialized = true;
   }
 
-  void _save() {
-    if (_formKey.currentState?.validate() ?? false) {
-      Navigator.of(
-        context,
-      ).pop({'name': _nameController.text, 'email': _emailController.text});
+  Future<void> _pickAvatar() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1024,
+    );
+    if (file == null || !mounted) return;
+    setState(() {
+      _avatarPath = file.path;
+    });
+  }
+
+  Future<void> _save() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await AccountStorage.instance.updateAccountProfile(
+        email: _initialEmail,
+        name: _nameController.text.trim(),
+        avatarPath: _avatarPath,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save to cloud profile.')),
+      );
     }
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+    });
+    Navigator.of(context).pop({
+      'name': _nameController.text.trim(),
+      'email': _emailController.text.trim(),
+      'avatarPath': _avatarPath,
+    });
   }
 
   @override
@@ -66,6 +110,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Align(
+                      alignment: Alignment.center,
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 44,
+                            backgroundImage:
+                                _avatarPath != null && _avatarPath!.isNotEmpty
+                                ? FileImage(File(_avatarPath!))
+                                : null,
+                            child: _avatarPath == null || _avatarPath!.isEmpty
+                                ? const Icon(Icons.person, size: 42)
+                                : null,
+                          ),
+                          const SizedBox(height: 8),
+                          ShadButton.ghost(
+                            onPressed: _pickAvatar,
+                            leading: const Icon(Icons.photo_library),
+                            child: const Text('Upload Avatar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Container(
                       constraints: const BoxConstraints(
                         maxWidth: kFormElementWidth,
@@ -141,9 +209,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     Align(
                       alignment: Alignment.center,
                       child: ShadButton.outline(
-                        onPressed: _save,
+                        onPressed: _isSaving ? null : _save,
                         leading: const Icon(Icons.save),
-                        child: const Text('Submit'),
+                        child: Text(_isSaving ? 'Saving...' : 'Submit'),
                       ),
                     ),
                   ],

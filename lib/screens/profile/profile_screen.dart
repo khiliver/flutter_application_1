@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+
+import '../../services/account_storage.dart';
 import '../../widgets/app_header.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -6,6 +10,7 @@ class ProfileScreen extends StatefulWidget {
   final String? initialEmail;
   final String? initialRole;
   final String? initialUserType;
+  final String? initialAvatarPath;
 
   const ProfileScreen({
     super.key,
@@ -13,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
     this.initialEmail,
     this.initialRole,
     this.initialUserType,
+    this.initialAvatarPath,
   });
 
   @override
@@ -24,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _email;
   String? _role;
   String? _userType;
+  String? _avatarPath;
 
   @override
   void initState() {
@@ -32,6 +39,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _email = widget.initialEmail ?? 'john@example.com';
     _role = widget.initialRole;
     _userType = widget.initialUserType;
+    _avatarPath = widget.initialAvatarPath;
+    _loadLatestProfile();
+  }
+
+  Future<void> _loadLatestProfile() async {
+    if (_email.isEmpty) return;
+    try {
+      final account = await AccountStorage.instance.findByEmail(_email);
+      if (!mounted || account == null) return;
+      setState(() {
+        _name = account.name;
+        _avatarPath = account.avatarPath;
+      });
+    } catch (_) {
+      // Keep fallback values when remote profile load fails.
+    }
   }
 
   void _signOut(BuildContext context) {
@@ -39,13 +62,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _editProfile() async {
-    final result = await Navigator.of(
-      context,
-    ).pushNamed('/editProfile', arguments: {'name': _name, 'email': _email});
-    if (result is Map<String, String>) {
+    final result = await Navigator.of(context).pushNamed(
+      '/editProfile',
+      arguments: {'name': _name, 'email': _email, 'avatarPath': _avatarPath},
+    );
+    if (result is Map) {
       setState(() {
-        _name = result['name'] ?? _name;
-        _email = result['email'] ?? _email;
+        _name = result['name']?.toString() ?? _name;
+        _email = result['email']?.toString() ?? _email;
+        _avatarPath = result['avatarPath']?.toString();
       });
     }
   }
@@ -196,9 +221,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Center(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 50,
-                  child: Icon(Icons.person, size: 50),
+                  backgroundImage:
+                      _avatarPath != null && _avatarPath!.isNotEmpty
+                      ? FileImage(File(_avatarPath!))
+                      : null,
+                  child: _avatarPath == null || _avatarPath!.isEmpty
+                      ? const Icon(Icons.person, size: 50)
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(

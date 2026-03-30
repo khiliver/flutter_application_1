@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 enum ReservationType { seat, discussionRoom, book }
@@ -57,6 +58,7 @@ class ReservationItem {
   final DateTime? reservationDate;
   final String schoolId;
   final String cellphone;
+  final String college;
   final String schoolOrigin;
 
   ReservationItem({
@@ -73,8 +75,15 @@ class ReservationItem {
     this.reservationDate,
     this.schoolId = '',
     this.cellphone = '',
+    this.college = '',
     this.schoolOrigin = '',
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+
+  String get collegeName {
+    final c = college.trim();
+    if (c.isNotEmpty) return c;
+    return schoolOrigin.trim();
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -90,6 +99,7 @@ class ReservationItem {
     'reservationDate': reservationDate?.toIso8601String(),
     'schoolId': schoolId,
     'cellphone': cellphone,
+    'college': college,
     'schoolOrigin': schoolOrigin,
   };
 
@@ -101,7 +111,7 @@ class ReservationItem {
         orElse: () => ReservationType.book,
       ),
       title: json['title'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
       status: ReservationStatus.values.firstWhere(
         (e) => e.toString() == json['status'],
         orElse: () => ReservationStatus.pending,
@@ -111,12 +121,25 @@ class ReservationItem {
       firstName: json['firstName'] as String? ?? '',
       middleName: json['middleName'] as String? ?? '',
       surname: json['surname'] as String? ?? '',
-      reservationDate: json['reservationDate'] != null
-          ? DateTime.parse(json['reservationDate'] as String)
-          : null,
+      reservationDate: _parseDateTime(json['reservationDate']),
       schoolId: json['schoolId'] as String? ?? '',
       cellphone: json['cellphone'] as String? ?? '',
+      college:
+          (json['college'] as String?) ??
+          (json['schoolOrigin'] as String?) ??
+          '',
       schoolOrigin: json['schoolOrigin'] as String? ?? '',
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (_) {
+      return null;
+    }
   }
 }

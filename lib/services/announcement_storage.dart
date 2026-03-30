@@ -1,8 +1,5 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
-const _kAnnouncementsKey = 'risa_announcements_v1';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class Announcement {
   final String title;
@@ -37,12 +34,23 @@ class Announcement {
     return Announcement(
       title: json['title'] as String,
       body: json['body'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
       imagePath: json['imagePath'] as String?,
       gifUrl: json['gifUrl'] as String?,
       emoji: json['emoji'] as String?,
       sticker: json['sticker'] as String?,
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -51,31 +59,56 @@ class AnnouncementStorage {
 
   static final AnnouncementStorage instance = AnnouncementStorage._();
 
-  Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
+  CollectionReference<Map<String, dynamic>>? get _collection {
+    if (Firebase.apps.isEmpty) {
+      return null;
+    }
+    return FirebaseFirestore.instance.collection('announcements');
+  }
+
+  bool get isReady => _collection != null;
 
   Future<List<Announcement>> getAnnouncements() async {
-    final prefs = await _prefs;
-    final raw = prefs.getStringList(_kAnnouncementsKey);
-    if (raw == null) return [];
-    final list = raw
-        .map(
-          (s) => Announcement.fromJson(jsonDecode(s) as Map<String, dynamic>),
-        )
+    if (_collection == null) return [];
+
+    final snapshot = await _collection!
+        .orderBy('createdAt', descending: true)
+        .get(const GetOptions(source: Source.serverAndCache));
+
+    final list = snapshot.docs
+        .map((doc) {
+          try {
+            return Announcement.fromJson({...doc.data()});
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<Announcement>()
         .toList();
-    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
     return list;
   }
 
   Future<void> addAnnouncement(Announcement announcement) async {
-    final prefs = await _prefs;
-    final announcements = await getAnnouncements();
-    announcements.insert(0, announcement);
-    final values = announcements.map((a) => jsonEncode(a.toJson())).toList();
-    await prefs.setStringList(_kAnnouncementsKey, values);
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for announcement writes.');
+    }
+
+    await _collection!.add({
+      ...announcement.toJson(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> clearAnnouncements() async {
-    final prefs = await _prefs;
-    await prefs.remove(_kAnnouncementsKey);
+    if (_collection == null) return;
+
+    final snapshot = await _collection!.limit(500).get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
   }
 }
