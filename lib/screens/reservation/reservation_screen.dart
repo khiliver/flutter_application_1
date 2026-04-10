@@ -10,6 +10,7 @@ import 'discussion_room_reservation_form.dart';
 import 'edit_reservation_dialog.dart';
 import 'reservation_info_dialog.dart';
 import 'reservation_type_picker_dialog.dart';
+import 'scanned_copy_reservation_form.dart';
 import 'seat_reservation_form.dart';
 
 class ReservationsScreen extends StatefulWidget {
@@ -86,6 +87,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             userName: widget.userName,
           ),
         );
+      } else if (type == ReservationType.scannedCopy) {
+        return showDialog<ReservationItem>(
+          // ignore: use_build_context_synchronously
+          context: context,
+          builder: (context) => ScannedCopyReservationForm(
+            userEmail: widget.userEmail,
+            userName: widget.userName,
+          ),
+        );
       } else if (type == ReservationType.seat) {
         return showDialog<ReservationItem>(
           // ignore: use_build_context_synchronously
@@ -106,6 +116,9 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
         );
       }
     } else {
+      if (type == ReservationType.scannedCopy) {
+        return _showManagerScannedCopyRequestInput();
+      }
       final title = await _showTitleInput(type);
       if (title?.isNotEmpty ?? false) {
         return ReservationItem(
@@ -120,16 +133,131 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     return null;
   }
 
+  Future<ReservationItem?> _showManagerScannedCopyRequestInput() async {
+    final titleController = TextEditingController();
+    final pageStartController = TextEditingController();
+    final pageEndController = TextEditingController();
+    String? errorMessage;
+
+    final result = await showDialog<ReservationItem>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void onSave() {
+            final title = titleController.text.trim();
+            final pageStart = int.tryParse(pageStartController.text.trim());
+            final pageEnd = int.tryParse(pageEndController.text.trim());
+
+            if (title.isEmpty || pageStart == null || pageEnd == null) {
+              setDialogState(() {
+                errorMessage = 'Please enter title and valid page numbers.';
+              });
+              return;
+            }
+
+            if (pageStart <= 0 || pageEnd <= 0 || pageEnd < pageStart) {
+              setDialogState(() {
+                errorMessage =
+                    'Page range is invalid. Ensure start/end are positive and end is not before start.';
+              });
+              return;
+            }
+
+            final totalPages = pageEnd - pageStart + 1;
+            if (totalPages > 20) {
+              setDialogState(() {
+                errorMessage =
+                    'Scanned copy request is limited to 20 pages only.';
+              });
+              return;
+            }
+
+            Navigator.of(dialogContext).pop(
+              ReservationItem(
+                type: ReservationType.scannedCopy,
+                title: title,
+                createdAt: DateTime.now(),
+                requesterEmail: widget.userEmail ?? '',
+                requesterName: widget.userName ?? '',
+                pageStart: pageStart,
+                pageEnd: pageEnd,
+              ),
+            );
+          }
+
+          return AlertDialog(
+            title: const Text('Request Scanned Copy'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Book title'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pageStartController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Page start'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pageEndController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Page end'),
+                ),
+                const SizedBox(height: 12),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Maximum 20 pages per request.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    errorMessage!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(onPressed: onSave, child: const Text('Save')),
+            ],
+          );
+        },
+      ),
+    );
+
+    titleController.dispose();
+    pageStartController.dispose();
+    pageEndController.dispose();
+    return result;
+  }
+
   Future<String?> _showTitleInput(ReservationType type) async {
     final controller = TextEditingController();
+    final dialogTitle = type == ReservationType.scannedCopy
+        ? 'Request Scan'
+        : 'Reserve ${type.label}';
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Reserve ${type.label}'),
+        title: Text(dialogTitle),
         content: TextField(
           controller: controller,
           decoration: InputDecoration(
-            labelText: type == ReservationType.book ? 'Book title' : 'Name',
+            labelText:
+                type == ReservationType.book ||
+                    type == ReservationType.scannedCopy
+                ? 'Book title'
+                : 'Name',
           ),
         ),
         actions: [

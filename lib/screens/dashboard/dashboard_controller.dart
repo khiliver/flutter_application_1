@@ -10,6 +10,13 @@ import '../../services/announcement_storage.dart';
 import '../../services/notification_storage.dart';
 import '../../services/reservation_storage.dart';
 
+class _AccountEditResult {
+  const _AccountEditResult({required this.role, this.unit});
+
+  final String role;
+  final String? unit;
+}
+
 class DashboardController extends ChangeNotifier {
   DashboardController({required this.role});
 
@@ -284,7 +291,7 @@ class DashboardController extends ChangeNotifier {
     final notificationSubtitle = body.isNotEmpty
         ? body
         : 'A new announcement was posted.';
-    for (final userType in ['Student', 'Faculty', 'Visitor']) {
+    for (final userType in ['Student', 'Personel', 'Visitor']) {
       await NotificationStorage.instance.addAudienceNotification(
         title: 'New announcement',
         subtitle: notificationSubtitle,
@@ -390,31 +397,55 @@ class DashboardController extends ChangeNotifier {
     }
 
     var selectedRole = account.role;
-    final result = await showDialog<String>(
+    final unitController = TextEditingController(text: account.unit ?? '');
+    final result = await showDialog<_AccountEditResult>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final requiresUnit =
+                selectedRole.toLowerCase() == 'admin' ||
+                selectedRole.toLowerCase() == 'librarian';
             return AlertDialog(
-              title: Text('Edit role for ${account.name}'),
-              content: DropdownButtonFormField<String>(
-                initialValue: selectedRole,
-                decoration: const InputDecoration(labelText: 'Role'),
-                items: assignableRoles
-                    .map(
-                      (roleOption) => DropdownMenuItem(
-                        value: roleOption,
-                        child: Text(roleOption),
+              title: Text('Edit account for ${account.name}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedRole,
+                      decoration: const InputDecoration(labelText: 'Role'),
+                      items: assignableRoles
+                          .map(
+                            (roleOption) => DropdownMenuItem(
+                              value: roleOption,
+                              child: Text(roleOption),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            selectedRole = value;
+                            if (value.toLowerCase() == 'user') {
+                              unitController.clear();
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    if (requiresUnit) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: unitController,
+                        decoration: const InputDecoration(
+                          labelText: 'Unit',
+                          hintText: 'Enter office/unit for this account',
+                        ),
                       ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setDialogState(() {
-                      selectedRole = value;
-                    });
-                  }
-                },
+                    ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -422,7 +453,16 @@ class DashboardController extends ChangeNotifier {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(selectedRole),
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _AccountEditResult(
+                        role: selectedRole,
+                        unit: unitController.text.trim().isEmpty
+                            ? null
+                            : unitController.text.trim(),
+                      ),
+                    );
+                  },
                   child: const Text('Save'),
                 ),
               ],
@@ -432,13 +472,22 @@ class DashboardController extends ChangeNotifier {
       },
     );
 
-    if (result == null || result == account.role) {
+    if (result == null) {
+      return;
+    }
+
+    final roleUnchanged = result.role == account.role;
+    final currentUnit = (account.unit ?? '').trim();
+    final nextUnit = (result.unit ?? '').trim();
+    final unitUnchanged = currentUnit == nextUnit;
+    if (roleUnchanged && unitUnchanged) {
       return;
     }
 
     final updated = await AccountStorage.instance.updateAccountRole(
       account.email,
-      result,
+      result.role,
+      unit: result.unit,
       actingUserRole: role,
     );
 
@@ -459,7 +508,11 @@ class DashboardController extends ChangeNotifier {
     }
 
     messenger.showSnackBar(
-      SnackBar(content: Text('Updated ${account.name} to $result.')),
+      SnackBar(
+        content: Text(
+          'Updated ${account.name} to ${result.role}${result.unit != null ? ' (${result.unit})' : ''}.',
+        ),
+      ),
     );
     reloadAccounts();
   }

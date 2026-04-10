@@ -23,6 +23,13 @@ class ReservationInfoDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Title: ${reservation.title}'),
+            if (reservation.type == ReservationType.scannedCopy &&
+                reservation.hasScannedCopyPages) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Pages: ${reservation.pageStart} - ${reservation.pageEnd} (${reservation.scannedCopyPageCount} pages)',
+              ),
+            ],
             const SizedBox(height: 8),
             Text('Status: ${reservation.status.label}'),
             const SizedBox(height: 8),

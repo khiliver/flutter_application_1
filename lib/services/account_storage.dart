@@ -6,16 +6,36 @@ class Account {
   final String password;
   final String name;
   final String role;
+  final String? unit;
   final String? userType;
   final String? avatarPath;
+  final String? firstName;
+  final String? middleName;
+  final String? lastName;
+  final String? contactNumber;
+  final String? birthdate;
+  final String? gender;
+  final String? course;
+  final String? college;
+  final String? department;
 
   Account({
     required this.email,
     required this.password,
     required this.name,
     required this.role,
+    this.unit,
     this.userType,
     this.avatarPath,
+    this.firstName,
+    this.middleName,
+    this.lastName,
+    this.contactNumber,
+    this.birthdate,
+    this.gender,
+    this.course,
+    this.college,
+    this.department,
   });
 
   Map<String, dynamic> toJson() => {
@@ -23,8 +43,18 @@ class Account {
     'password': password,
     'name': name,
     'role': role,
+    if (unit != null) 'unit': unit,
     if (userType != null) 'userType': userType,
     if (avatarPath != null) 'avatarPath': avatarPath,
+    if (firstName != null) 'firstName': firstName,
+    if (middleName != null) 'middleName': middleName,
+    if (lastName != null) 'lastName': lastName,
+    if (contactNumber != null) 'contactNumber': contactNumber,
+    if (birthdate != null) 'birthdate': birthdate,
+    if (gender != null) 'gender': gender,
+    if (course != null) 'course': course,
+    if (college != null) 'college': college,
+    if (department != null) 'department': department,
   };
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -33,8 +63,18 @@ class Account {
       password: json['password'] as String,
       name: json['name'] as String,
       role: json['role'] as String,
+      unit: json['unit'] as String?,
       userType: json['userType'] as String?,
       avatarPath: json['avatarPath'] as String?,
+      firstName: json['firstName'] as String?,
+      middleName: json['middleName'] as String?,
+      lastName: json['lastName'] as String?,
+      contactNumber: json['contactNumber'] as String?,
+      birthdate: json['birthdate'] as String?,
+      gender: json['gender'] as String?,
+      course: json['course'] as String?,
+      college: json['college'] as String?,
+      department: json['department'] as String?,
     );
   }
 }
@@ -129,6 +169,7 @@ class AccountStorage {
     String email,
     String role, {
     required String actingUserRole,
+    String? unit,
   }) async {
     if (actingUserRole.toLowerCase() != 'super admin') {
       return false;
@@ -140,6 +181,7 @@ class AccountStorage {
     }
 
     final normalizedRole = role.toLowerCase();
+    final normalizedUnit = unit?.trim();
 
     // Super Admin role is protected and cannot be assigned from user management.
     if (!{'user', 'librarian', 'admin'}.contains(normalizedRole)) {
@@ -151,10 +193,24 @@ class AccountStorage {
       password: current.password,
       name: current.name,
       role: role,
+      unit: normalizedRole == 'admin' || normalizedRole == 'librarian'
+          ? ((normalizedUnit == null || normalizedUnit.isEmpty)
+                ? current.unit
+                : normalizedUnit)
+          : null,
       userType: normalizedRole == 'user'
           ? (current.userType ?? 'Student')
           : null,
       avatarPath: current.avatarPath,
+      firstName: current.firstName,
+      middleName: current.middleName,
+      lastName: current.lastName,
+      contactNumber: current.contactNumber,
+      birthdate: current.birthdate,
+      gender: current.gender,
+      course: normalizedRole == 'user' ? current.course : null,
+      college: normalizedRole == 'user' ? current.college : null,
+      department: normalizedRole == 'user' ? current.department : null,
     );
 
     await _upsertAccount(updated);
@@ -176,8 +232,18 @@ class AccountStorage {
       password: current.password,
       name: name,
       role: current.role,
+      unit: current.unit,
       userType: current.userType,
       avatarPath: avatarPath,
+      firstName: current.firstName,
+      middleName: current.middleName,
+      lastName: current.lastName,
+      contactNumber: current.contactNumber,
+      birthdate: current.birthdate,
+      gender: current.gender,
+      course: current.course,
+      college: current.college,
+      department: current.department,
     );
 
     await _upsertAccount(updated);

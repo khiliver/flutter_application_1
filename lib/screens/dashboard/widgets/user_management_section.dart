@@ -72,6 +72,23 @@ class _AccountTile extends StatelessWidget {
   final VoidCallback onEditRole;
   final VoidCallback onDeleteAccount;
 
+  String _subtitleText() {
+    final roleText = account.role;
+    final roleKey = roleText.toLowerCase();
+    final canHaveUnit = roleKey == 'admin' || roleKey == 'librarian';
+    final unit = account.unit?.trim();
+
+    if (canHaveUnit && unit != null && unit.isNotEmpty) {
+      return '$roleText • Unit: $unit';
+    }
+
+    if (account.userType != null && account.userType!.isNotEmpty) {
+      return '$roleText • ${account.userType}';
+    }
+
+    return roleText;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -81,9 +98,7 @@ class _AccountTile extends StatelessWidget {
         child: ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(account.name),
-          subtitle: Text(
-            '${account.role}${account.userType != null ? ' • ${account.userType}' : ''}',
-          ),
+          subtitle: Text(_subtitleText()),
           trailing: showActions
               ? Row(
                   mainAxisSize: MainAxisSize.min,

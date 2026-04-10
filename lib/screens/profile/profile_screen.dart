@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/account_storage.dart';
 import '../../widgets/app_header.dart';
+import 'ejournal_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? initialName;
@@ -73,6 +74,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _avatarPath = result['avatarPath']?.toString();
       });
     }
+  }
+
+  void _openBooks() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            EJournalScreen(userRole: _role, userType: _userType),
+      ),
+    );
   }
 
   void _showFAQ() {
@@ -186,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               SizedBox(height: 10),
               Text(
-                'In this app, reservation services are available for students, BU faculty/staff, and visitors from partner campuses or schools.',
+                'In this app, reservation services are available for students, BU personel/staff, and visitors from partner campuses or schools.',
               ),
               SizedBox(height: 16),
               Text(
@@ -267,7 +277,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ListTile(
             leading: const Icon(Icons.book),
             title: const Text('Books'),
-            onTap: () {},
+            onTap: _openBooks,
           ),
           ListTile(
             leading: const Icon(Icons.question_answer),

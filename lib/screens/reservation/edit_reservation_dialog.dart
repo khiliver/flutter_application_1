@@ -39,7 +39,9 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
           TextField(
             controller: _titleController,
             decoration: InputDecoration(
-              labelText: widget.reservation.type == ReservationType.book
+              labelText:
+                  widget.reservation.type == ReservationType.book ||
+                      widget.reservation.type == ReservationType.scannedCopy
                   ? 'Book title'
                   : 'Name',
             ),
@@ -87,6 +89,8 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
                 cellphone: widget.reservation.cellphone,
                 college: widget.reservation.college,
                 schoolOrigin: widget.reservation.schoolOrigin,
+                pageStart: widget.reservation.pageStart,
+                pageEnd: widget.reservation.pageEnd,
               ),
             );
           },

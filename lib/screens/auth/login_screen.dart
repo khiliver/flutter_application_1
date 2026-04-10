@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../constants.dart';
 import '../../services/account_storage.dart';
 import '../../services/notification_storage.dart';
+import 'auth_form_card.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,17 +16,33 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _middleNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _contactNumberController = TextEditingController();
+  final _birthdateController = TextEditingController();
+  final _courseController = TextEditingController();
+  final _collegeController = TextEditingController();
+  final _departmentController = TextEditingController();
   final _formKey = GlobalKey<ShadFormState>();
+  final _picker = ImagePicker();
 
   String _signUpCategory = 'Student';
   String _signUpRole = 'User';
+  String _signUpGender = 'Male';
+  String? _signUpAvatarPath;
   bool _canCreateSuperAdmin = false;
   bool _isSignIn = true;
   bool _obscurePassword = true;
 
-  List<String> get _signUpRoleOptions =>
-      _canCreateSuperAdmin ? const ['User', 'Super Admin'] : const ['User'];
+  String get _composedName {
+    final parts = [
+      _firstNameController.text.trim(),
+      _middleNameController.text.trim(),
+      _lastNameController.text.trim(),
+    ].where((part) => part.isNotEmpty).toList();
+    return parts.join(' ');
+  }
 
   @override
   void initState() {
@@ -62,6 +79,36 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickSignUpAvatar() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1024,
+    );
+    if (file == null || !mounted) return;
+    setState(() {
+      _signUpAvatarPath = file.path;
+    });
+  }
+
+  void _resetSignUpFields() {
+    _emailController.clear();
+    _passwordController.clear();
+    _firstNameController.clear();
+    _middleNameController.clear();
+    _lastNameController.clear();
+    _contactNumberController.clear();
+    _birthdateController.clear();
+    _courseController.clear();
+    _collegeController.clear();
+    _departmentController.clear();
+    _signUpCategory = 'Student';
+    _signUpRole = 'User';
+    _signUpAvatarPath = null;
+    _signUpGender = 'Male';
+    _obscurePassword = true;
   }
 
   Future<void> _attemptLogin() async {
@@ -122,6 +169,14 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final isUserRole = _signUpRole.toLowerCase() == 'user';
+      if (_birthdateController.text.trim().isEmpty) {
+        await _showResultDialog(
+          title: 'Registration failed',
+          message: 'Please select your birthdate.',
+        );
+        return;
+      }
+
       final existingAccount = await AccountStorage.instance.findByEmail(email);
       if (existingAccount != null) {
         await _showResultDialog(
@@ -146,9 +201,33 @@ class _LoginScreenState extends State<LoginScreen> {
       final account = Account(
         email: email,
         password: password,
-        name: _nameController.text.trim(),
+        name: _composedName,
         role: _signUpRole,
         userType: isUserRole ? _signUpCategory : null,
+        avatarPath: _signUpAvatarPath,
+        firstName: _firstNameController.text.trim(),
+        middleName: _middleNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        contactNumber: _contactNumberController.text.trim(),
+        birthdate: _birthdateController.text.trim(),
+        gender: _signUpGender,
+        course:
+            _signUpRole.toLowerCase() == 'user' &&
+                _signUpCategory.toLowerCase() == 'student'
+            ? _courseController.text.trim()
+            : null,
+        college:
+            _signUpRole.toLowerCase() == 'user' &&
+                (_signUpCategory.toLowerCase() == 'student' ||
+                    _signUpCategory.toLowerCase() == 'personel')
+            ? _collegeController.text.trim()
+            : null,
+        department:
+            _signUpRole.toLowerCase() == 'user' &&
+                (_signUpCategory.toLowerCase() == 'student' ||
+                    _signUpCategory.toLowerCase() == 'personel')
+            ? _departmentController.text.trim()
+            : null,
       );
 
       final wasAdded = await AccountStorage.instance.addAccount(account);
@@ -169,8 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // ignore: unnecessary_cast
-    final Account account = createdAccount as Account;
+    final Account account = createdAccount;
 
     await NotificationStorage.instance.addNotification(
       AppNotification(
@@ -188,7 +266,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
     _passwordController.clear();
-    _nameController.clear();
+    _firstNameController.clear();
+    _middleNameController.clear();
+    _lastNameController.clear();
+    _contactNumberController.clear();
+    _birthdateController.clear();
+    _courseController.clear();
+    _collegeController.clear();
+    _departmentController.clear();
+    _signUpAvatarPath = null;
+    _signUpGender = 'Male';
     _obscurePassword = true;
     setState(() {
       _isSignIn = true;
@@ -201,7 +288,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     _emailController.clear();
     _passwordController.clear();
-    _nameController.clear();
+    _firstNameController.clear();
+    _middleNameController.clear();
+    _lastNameController.clear();
+    _contactNumberController.clear();
+    _birthdateController.clear();
+    _courseController.clear();
+    _collegeController.clear();
+    _departmentController.clear();
+    _signUpAvatarPath = null;
+    _signUpGender = 'Male';
     _obscurePassword = true;
     setState(() {
       _isSignIn = true;
@@ -212,222 +308,94 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _nameController.dispose();
+    _firstNameController.dispose();
+    _middleNameController.dispose();
+    _lastNameController.dispose();
+    _contactNumberController.dispose();
+    _birthdateController.dispose();
+    _courseController.dispose();
+    _collegeController.dispose();
+    _departmentController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ShadForm(
-          key: _formKey,
-          child: Center(
-            child: ShadCard(
-              width: kFormElementWidth + 32,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Research and Information Search Assistant',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.blueAccent),
-                  ),
-                  const SizedBox(height: 8),
-                  Image.asset('assets/Risa_logo.png', height: 78),
-                  const SizedBox(height: 24),
-                  ToggleButtons(
-                    isSelected: [_isSignIn, !_isSignIn],
-                    onPressed: (index) {
-                      _emailController.clear();
-                      _passwordController.clear();
-                      _nameController.clear();
-                      _signUpCategory = 'Student';
-                      _signUpRole = 'User';
-                      _obscurePassword = true;
-                      setState(() {
-                        _isSignIn = index == 0;
-                      });
-                      if (index == 1) {
-                        _refreshSuperAdminAvailability();
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 32,
+                ),
+                child: AuthFormCard(
+                  formKey: _formKey,
+                  isSignIn: _isSignIn,
+                  obscurePassword: _obscurePassword,
+                  canCreateSuperAdmin: _canCreateSuperAdmin,
+                  signUpCategory: _signUpCategory,
+                  signUpRole: _signUpRole,
+                  signUpGender: _signUpGender,
+                  signUpAvatarPath: _signUpAvatarPath,
+                  emailController: _emailController,
+                  passwordController: _passwordController,
+                  firstNameController: _firstNameController,
+                  middleNameController: _middleNameController,
+                  lastNameController: _lastNameController,
+                  contactNumberController: _contactNumberController,
+                  birthdateController: _birthdateController,
+                  courseController: _courseController,
+                  collegeController: _collegeController,
+                  departmentController: _departmentController,
+                  onForgotPassword: _goToForgotPassword,
+                  onToggleObscurePassword: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                  onPickAvatar: _pickSignUpAvatar,
+                  onModeChanged: (index) {
+                    _resetSignUpFields();
+                    setState(() {
+                      _isSignIn = index == 0;
+                    });
+                    if (index == 1) {
+                      _refreshSuperAdminAvailability();
+                    }
+                  },
+                  onRoleChanged: (value) {
+                    setState(() {
+                      _signUpRole = value;
+                      if (_signUpRole.toLowerCase() != 'user') {
+                        _signUpCategory = 'Student';
                       }
-                    },
-                    selectedColor: Colors.white,
-                    fillColor: Colors.blue,
-                    borderColor: Colors.blue,
-                    selectedBorderColor: Colors.blue,
-                    borderRadius: BorderRadius.circular(4),
-                    children: const [
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('Sign In'),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('Sign Up'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    transitionBuilder: (child, animation) =>
-                        FadeTransition(opacity: animation, child: child),
-                    child: Column(
-                      key: ValueKey<bool>(_isSignIn),
-                      children: [
-                        if (!_isSignIn) ...[
-                          SizedBox(
-                            width: kFormElementWidth,
-                            child: ShadInputFormField(
-                              controller: _nameController,
-                              placeholder: const Text('Full Name'),
-                              validator: (v) {
-                                if (v.trim().isEmpty) {
-                                  return 'Please enter full name';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: kFormElementWidth,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _signUpRole,
-                              decoration: const InputDecoration(
-                                labelText: 'Role',
-                              ),
-                              items: _signUpRoleOptions
-                                  .map(
-                                    (role) => DropdownMenuItem(
-                                      value: role,
-                                      child: Text(role),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setState(() {
-                                    _signUpRole = v;
-                                    if (_signUpRole.toLowerCase() != 'user') {
-                                      _signUpCategory = 'Student';
-                                    }
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          if (_signUpRole.toLowerCase() == 'user') ...[
-                            SizedBox(
-                              width: kFormElementWidth,
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _signUpCategory,
-                                decoration: const InputDecoration(
-                                  labelText: 'User Type',
-                                ),
-                                items: ['Student', 'Faculty', 'Visitor']
-                                    .map(
-                                      (u) => DropdownMenuItem(
-                                        value: u,
-                                        child: Text(u),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) {
-                                  if (v != null) {
-                                    setState(() => _signUpCategory = v);
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        ],
-                        SizedBox(
-                          width: kFormElementWidth,
-                          child: ShadInputFormField(
-                            controller: _emailController,
-                            placeholder: const Text('Email'),
-                            validator: (v) {
-                              if (v.trim().isEmpty) {
-                                return 'Please enter email';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: kFormElementWidth,
-                          child: Stack(
-                            children: [
-                              ShadInputFormField(
-                                controller: _passwordController,
-                                placeholder: const Text('Password'),
-                                obscureText: _obscurePassword,
-                                validator: (v) {
-                                  final password = v.trim();
-                                  if (password.isEmpty) {
-                                    return 'Please enter password';
-                                  }
-                                  if (!_isSignIn && password.length < 6) {
-                                    return 'Password must be at least 6 characters';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                bottom: 0,
-                                child: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                  ),
-                                  tooltip: _obscurePassword
-                                      ? 'Show password'
-                                      : 'Hide password',
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_isSignIn) ...[
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ShadButton.link(
-                              onPressed: _goToForgotPassword,
-                              child: const Text('Forgot Password?'),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ] else
-                          const SizedBox(height: 24),
-                        ShadButton.outline(
-                          onPressed: _attemptLogin,
-                          leading: Icon(
-                            _isSignIn ? Icons.login : Icons.app_registration,
-                          ),
-                          child: Text(_isSignIn ? 'Login' : 'Register'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                    });
+                  },
+                  onCategoryChanged: (value) {
+                    setState(() {
+                      _signUpCategory = value;
+                      if (_signUpCategory.toLowerCase() != 'student') {
+                        _courseController.clear();
+                      }
+                      if (_signUpCategory.toLowerCase() == 'user') {
+                        _collegeController.clear();
+                        _departmentController.clear();
+                      }
+                    });
+                  },
+                  onGenderChanged: (value) {
+                    setState(() {
+                      _signUpGender = value;
+                    });
+                  },
+                  onSubmit: _attemptLogin,
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

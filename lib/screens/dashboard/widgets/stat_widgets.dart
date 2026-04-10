@@ -65,7 +65,7 @@ class StatRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${entry['count']} users (students/faculty/staff/visitors)',
+                      '${entry['count']} users (students/personel/staff/visitors)',
                     ),
                   ],
                 ),

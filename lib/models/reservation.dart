@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-enum ReservationType { seat, discussionRoom, book }
+enum ReservationType { seat, discussionRoom, book, scannedCopy }
 
 extension ReservationTypeExt on ReservationType {
   String get label {
@@ -12,6 +12,8 @@ extension ReservationTypeExt on ReservationType {
         return 'Discussion Room';
       case ReservationType.book:
         return 'Book';
+      case ReservationType.scannedCopy:
+        return 'Scanned Copy';
     }
   }
 
@@ -23,6 +25,8 @@ extension ReservationTypeExt on ReservationType {
         return Icons.meeting_room;
       case ReservationType.book:
         return Icons.book;
+      case ReservationType.scannedCopy:
+        return Icons.document_scanner;
     }
   }
 }
@@ -60,6 +64,8 @@ class ReservationItem {
   final String cellphone;
   final String college;
   final String schoolOrigin;
+  final int pageStart;
+  final int pageEnd;
 
   ReservationItem({
     String? id,
@@ -77,7 +83,16 @@ class ReservationItem {
     this.cellphone = '',
     this.college = '',
     this.schoolOrigin = '',
+    this.pageStart = 0,
+    this.pageEnd = 0,
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+
+  bool get hasScannedCopyPages => pageStart > 0 && pageEnd > 0;
+
+  int get scannedCopyPageCount {
+    if (!hasScannedCopyPages) return 0;
+    return pageEnd - pageStart + 1;
+  }
 
   String get collegeName {
     final c = college.trim();
@@ -101,6 +116,8 @@ class ReservationItem {
     'cellphone': cellphone,
     'college': college,
     'schoolOrigin': schoolOrigin,
+    'pageStart': pageStart,
+    'pageEnd': pageEnd,
   };
 
   factory ReservationItem.fromJson(Map<String, dynamic> json) {
@@ -129,6 +146,8 @@ class ReservationItem {
           (json['schoolOrigin'] as String?) ??
           '',
       schoolOrigin: json['schoolOrigin'] as String? ?? '',
+      pageStart: json['pageStart'] as int? ?? 0,
+      pageEnd: json['pageEnd'] as int? ?? 0,
     );
   }
 
