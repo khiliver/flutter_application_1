@@ -22,12 +22,15 @@ class AppTheme {
 
   static ThemeData get lightTheme {
     return ThemeData(
+      brightness: Brightness.light,
       primaryColor: primaryColor,
       colorScheme: ColorScheme.light(
         primary: primaryColor,
         secondary: accentColor,
       ),
       scaffoldBackgroundColor: backgroundColor,
+      canvasColor: backgroundColor,
+      cardColor: cardColor,
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(
         backgroundColor: primaryColor,
@@ -39,8 +42,23 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryColor,
+          side: const BorderSide(color: primaryColor),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primaryColor,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         ),
       ),
     );

@@ -15,6 +15,7 @@ class ReservationLineChart extends StatelessWidget {
     required this.yInterval,
     required this.onPickCollegeFilter,
     required this.onPickDate,
+    required this.onExportExcel,
   });
 
   final List<DateTime> weekDates;
@@ -25,6 +26,7 @@ class ReservationLineChart extends StatelessWidget {
   final double yInterval;
   final VoidCallback onPickCollegeFilter;
   final VoidCallback onPickDate;
+  final VoidCallback onExportExcel;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +51,11 @@ class ReservationLineChart extends StatelessWidget {
               onPressed: onPickDate,
               icon: const Icon(Icons.calendar_today),
               tooltip: 'Select date',
+            ),
+            IconButton(
+              onPressed: onExportExcel,
+              icon: const Icon(Icons.download),
+              tooltip: 'Export to Excel',
             ),
           ],
         ),

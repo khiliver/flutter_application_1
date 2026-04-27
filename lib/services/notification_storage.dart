@@ -64,6 +64,10 @@ class NotificationStorage {
 
   bool get isReady => _collection != null;
 
+  String _normalizeRoleToken(String role) {
+    return role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  }
+
   Future<List<AppNotification>> getNotifications() async {
     if (_collection == null) return [];
 
@@ -98,7 +102,7 @@ class NotificationStorage {
     String? userType,
   }) async {
     final all = await getNotifications();
-    final normalizedRole = role.toLowerCase();
+    final normalizedRole = _normalizeRoleToken(role);
     final normalizedEmail = email.toLowerCase();
     final normalizedUserType = userType?.toLowerCase();
 
@@ -109,7 +113,7 @@ class NotificationStorage {
 
       if (notification.recipientRole != null) {
         final roleMatches =
-            notification.recipientRole!.toLowerCase() == normalizedRole;
+            _normalizeRoleToken(notification.recipientRole!) == normalizedRole;
         if (!roleMatches) return false;
 
         if (notification.recipientUserType == null) {

@@ -33,6 +33,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String get _lastSeenPopupKey =>
       '$_kLastSeenPopupPrefix${widget.userEmail.trim().toLowerCase()}';
 
+  String _normalizeRoleToken(String role) {
+    return role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  }
+
   String _notificationFingerprint(AppNotification notification) {
     return '${notification.createdAt.toIso8601String()}|${notification.title}|${notification.subtitle}';
   }
@@ -48,8 +52,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   bool get _isManager {
-    final role = widget.userRole.toLowerCase();
-    return role == 'admin' || role == 'librarian' || role == 'super admin';
+    final role = _normalizeRoleToken(widget.userRole);
+    return role == 'admin' ||
+        role == 'librarian' ||
+        role == 'overalladmin' ||
+        role == 'superadmin';
+  }
+
+  bool get _isAdminLike {
+    final role = _normalizeRoleToken(widget.userRole);
+    return role == 'admin' || role == 'overalladmin' || role == 'superadmin';
   }
 
   bool _isUserVisibleNotification(AppNotification notification) {
@@ -68,7 +80,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _isLoading = true;
     });
 
-    final fetchedNotifications = _isManager
+    final fetchedNotifications = _isAdminLike
         ? await NotificationStorage.instance.getNotifications()
         : await NotificationStorage.instance.getNotificationsForAccount(
             role: widget.userRole,
@@ -159,47 +171,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildManagerBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_notifications.isEmpty) {
-      return const Center(child: Text('No notifications yet.'));
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadNotifications,
-      child: ListView.builder(
-        itemCount: _notifications.length,
-        itemBuilder: (context, index) {
-          final item = _notifications[index];
-          return InkWell(
-            onTap: widget.onGoToReservations,
-            child: NotificationTile(title: item.title, subtitle: item.subtitle),
-          );
-        },
-      ),
+    return _buildRefreshableNotificationsBody(
+      onItemTap: widget.onGoToReservations,
     );
   }
 
   Widget _buildUserBody() {
+    return _buildRefreshableNotificationsBody();
+  }
+
+  Widget _buildRefreshableNotificationsBody({VoidCallback? onItemTap}) {
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      child: _buildNotificationsList(onItemTap: onItemTap),
+    );
+  }
+
+  Widget _buildNotificationsList({VoidCallback? onItemTap}) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 220),
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
     }
 
     if (_notifications.isEmpty) {
-      return const Center(child: Text('No notifications yet.'));
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 220),
+          Center(child: Text('No notifications yet.')),
+        ],
+      );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadNotifications,
-      child: ListView.builder(
-        itemCount: _notifications.length,
-        itemBuilder: (context, index) {
-          final item = _notifications[index];
-          return NotificationTile(title: item.title, subtitle: item.subtitle);
-        },
-      ),
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: _notifications.length,
+      itemBuilder: (context, index) {
+        final item = _notifications[index];
+        final tile = NotificationTile(
+          title: item.title,
+          subtitle: item.subtitle,
+        );
+        if (onItemTap == null) {
+          return tile;
+        }
+        return InkWell(onTap: onItemTap, child: tile);
+      },
     );
   }
 }

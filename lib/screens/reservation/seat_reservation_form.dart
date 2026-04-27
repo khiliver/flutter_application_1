@@ -8,8 +8,14 @@ import '../../models/reservation.dart';
 class SeatReservationForm extends StatefulWidget {
   final String? userEmail;
   final String? userName;
+  final String? selectedLibrary;
 
-  const SeatReservationForm({super.key, this.userEmail, this.userName});
+  const SeatReservationForm({
+    super.key,
+    this.userEmail,
+    this.userName,
+    this.selectedLibrary,
+  });
 
   @override
   State<SeatReservationForm> createState() => _SeatReservationFormState();
@@ -81,6 +87,7 @@ class _SeatReservationFormState extends State<SeatReservationForm> {
         cellphone: cellphoneController.text.trim(),
         college: collegeController.text.trim(),
         schoolOrigin: schoolOriginController.text.trim(),
+        library: widget.selectedLibrary ?? '',
       ),
     );
   }
@@ -97,6 +104,13 @@ class _SeatReservationFormState extends State<SeatReservationForm> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if ((widget.selectedLibrary ?? '').isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Library: ${widget.selectedLibrary}'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 ShadInput(
                   controller: firstNameController,
                   placeholder: const Text('First Name'),

@@ -42,15 +42,14 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: const AppHeader(),
       body: RefreshIndicator(
         onRefresh: _loadAnnouncements,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _buildContent(),
+        child: _buildContent(),
       ),
     );
   }
 
   Widget _buildContent() {
     return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverPersistentHeader(
           pinned: true,
@@ -68,7 +67,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-        if (_announcements.isEmpty)
+        if (_isLoading)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_announcements.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(child: Text('No announcements yet.')),

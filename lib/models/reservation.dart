@@ -64,6 +64,7 @@ class ReservationItem {
   final String cellphone;
   final String college;
   final String schoolOrigin;
+  final String library;
   final int pageStart;
   final int pageEnd;
 
@@ -83,6 +84,7 @@ class ReservationItem {
     this.cellphone = '',
     this.college = '',
     this.schoolOrigin = '',
+    this.library = '',
     this.pageStart = 0,
     this.pageEnd = 0,
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
@@ -116,6 +118,7 @@ class ReservationItem {
     'cellphone': cellphone,
     'college': college,
     'schoolOrigin': schoolOrigin,
+    'library': library,
     'pageStart': pageStart,
     'pageEnd': pageEnd,
   };
@@ -146,6 +149,7 @@ class ReservationItem {
           (json['schoolOrigin'] as String?) ??
           '',
       schoolOrigin: json['schoolOrigin'] as String? ?? '',
+      library: json['library'] as String? ?? '',
       pageStart: json['pageStart'] as int? ?? 0,
       pageEnd: json['pageEnd'] as int? ?? 0,
     );

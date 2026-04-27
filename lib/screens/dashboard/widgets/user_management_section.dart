@@ -29,11 +29,10 @@ class UserManagementSection extends StatelessWidget {
         final accounts = snapshot.data ?? [];
         final visibleAccounts = isSuperAdmin
             ? accounts
-            : accounts
-                  .where(
-                    (account) => account.role.toLowerCase() != 'super admin',
-                  )
-                  .toList();
+            : accounts.where((account) {
+                final role = account.role.toLowerCase();
+                return role != 'over all admin' && role != 'super admin';
+              }).toList();
 
         if (visibleAccounts.isEmpty) {
           return const Padding(
@@ -79,7 +78,8 @@ class _AccountTile extends StatelessWidget {
     final unit = account.unit?.trim();
 
     if (canHaveUnit && unit != null && unit.isNotEmpty) {
-      return '$roleText • Unit: $unit';
+      final label = roleKey == 'librarian' ? 'Library' : 'Unit';
+      return '$roleText • $label: $unit';
     }
 
     if (account.userType != null && account.userType!.isNotEmpty) {

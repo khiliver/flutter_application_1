@@ -8,8 +8,14 @@ import '../../models/reservation.dart';
 class ScannedCopyReservationForm extends StatefulWidget {
   final String? userEmail;
   final String? userName;
+  final String? selectedLibrary;
 
-  const ScannedCopyReservationForm({super.key, this.userEmail, this.userName});
+  const ScannedCopyReservationForm({
+    super.key,
+    this.userEmail,
+    this.userName,
+    this.selectedLibrary,
+  });
 
   @override
   State<ScannedCopyReservationForm> createState() =>
@@ -117,6 +123,7 @@ class _ScannedCopyReservationFormState
         cellphone: cellphoneController.text.trim(),
         college: collegeController.text.trim(),
         schoolOrigin: schoolOriginController.text.trim(),
+        library: widget.selectedLibrary ?? '',
         pageStart: pageStart,
         pageEnd: pageEnd,
       ),
@@ -135,6 +142,13 @@ class _ScannedCopyReservationFormState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if ((widget.selectedLibrary ?? '').isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Library: ${widget.selectedLibrary}'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 ShadInput(
                   controller: titleController,
                   placeholder: const Text('Book title'),

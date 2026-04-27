@@ -1,3 +1,4 @@
+import 'account_storage.dart';
 import '../models/reservation.dart';
 import 'notification_storage.dart';
 
@@ -8,29 +9,64 @@ class ReservationNotificationHelper {
     required String? userEmail,
     required String? userName,
   }) async {
-    if (userEmail == null) return;
-
+    final requesterEmail = userEmail?.trim() ?? '';
     final displayName = (userName?.trim().isNotEmpty ?? false)
         ? userName!
         : 'A user';
 
-    // Admin notification (global)
-    await NotificationStorage.instance.addNotification(
-      AppNotification(
-        title: 'New reservation',
-        subtitle: '$displayName reserved "${reservation.title}".',
-        createdAt: DateTime.now(),
-      ),
-    );
+    final reservationLabel = reservation.library.trim().isEmpty
+        ? reservation.title
+        : '${reservation.title} (${reservation.library})';
+
+    // Send manager-facing notifications by role instead of global broadcast.
+    for (final managerRole in const ['Admin', 'Over All Admin']) {
+      await NotificationStorage.instance.addNotification(
+        AppNotification(
+          title: 'New reservation',
+          subtitle: '$displayName reserved "$reservationLabel".',
+          createdAt: DateTime.now(),
+          recipientRole: managerRole,
+        ),
+      );
+    }
+
+    // Notify librarian(s) assigned to the reservation's library.
+    final library = reservation.library.trim();
+    if (library.isNotEmpty) {
+      final librarians = await AccountStorage.instance.getLibrariansForLibrary(
+        library,
+      );
+      final notifiedEmails = <String>{};
+      final normalizedRequesterEmail = requesterEmail.toLowerCase();
+
+      for (final librarian in librarians) {
+        final recipientEmail = librarian.email.trim();
+        if (recipientEmail.isEmpty ||
+            (normalizedRequesterEmail.isNotEmpty &&
+                recipientEmail.toLowerCase() == normalizedRequesterEmail) ||
+            !notifiedEmails.add(recipientEmail.toLowerCase())) {
+          continue;
+        }
+
+        await NotificationStorage.instance.addNotification(
+          AppNotification(
+            title: 'New reservation in your library',
+            subtitle: '$displayName reserved "$reservationLabel".',
+            createdAt: DateTime.now(),
+            recipientEmail: recipientEmail,
+          ),
+        );
+      }
+    }
 
     // Student notification (targeted)
-    if (userEmail.isNotEmpty) {
+    if (requesterEmail.isNotEmpty) {
       await NotificationStorage.instance.addNotification(
         AppNotification(
           title: 'Reservation created',
           subtitle: 'Your reservation for "${reservation.title}" was created.',
           createdAt: DateTime.now(),
-          recipientEmail: userEmail,
+          recipientEmail: requesterEmail,
         ),
       );
     }

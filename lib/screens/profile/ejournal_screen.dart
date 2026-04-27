@@ -25,6 +25,7 @@ class _EJournalScreenState extends State<EJournalScreen> {
     final normalizedRole = (widget.userRole ?? '').toLowerCase();
     return normalizedRole == 'admin' ||
         normalizedRole == 'librarian' ||
+        normalizedRole == 'over all admin' ||
         normalizedRole == 'super admin';
   }
 
@@ -208,6 +209,75 @@ class _EJournalScreenState extends State<EJournalScreen> {
     }
   }
 
+  Widget _buildRefreshableBody() {
+    if (!_canViewEntries) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 220),
+          Center(
+            child: Text(
+              'E-Journals are available for students and Non-BU users.',
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_isLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 220),
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
+    if (_entries.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 220),
+          Center(child: Text('No e-journals added yet.')),
+        ],
+      );
+    }
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      itemCount: _entries.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final entry = _entries[index];
+        return Card(
+          child: ListTile(
+            leading: const Icon(Icons.menu_book),
+            title: Text(entry.title),
+            subtitle: Text(entry.link),
+            onTap: () => _openEntry(entry),
+            trailing: _canManageEntries
+                ? PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _showEntryDialog(entry: entry);
+                      } else if (value == 'delete') {
+                        _deleteEntry(entry);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  )
+                : null,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -218,66 +288,10 @@ class _EJournalScreenState extends State<EJournalScreen> {
               child: const Icon(Icons.add),
             )
           : null,
-      body: !_canViewEntries
-          ? const Center(
-              child: Text(
-                'E-Journals are available for students and Non-BU users.',
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadEntries,
-              child: _isLoading
-                  ? ListView(
-                      children: [
-                        SizedBox(height: 220),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
-                  : _entries.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 220),
-                        Center(child: Text('No e-journals added yet.')),
-                      ],
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _entries.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final entry = _entries[index];
-                        return Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.menu_book),
-                            title: Text(entry.title),
-                            subtitle: Text(entry.link),
-                            onTap: () => _openEntry(entry),
-                            trailing: _canManageEntries
-                                ? PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      if (value == 'edit') {
-                                        _showEntryDialog(entry: entry);
-                                      } else if (value == 'delete') {
-                                        _deleteEntry(entry);
-                                      }
-                                    },
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        child: Text('Edit'),
-                                      ),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('Delete'),
-                                      ),
-                                    ],
-                                  )
-                                : null,
-                          ),
-                        );
-                      },
-                    ),
-            ),
+      body: RefreshIndicator(
+        onRefresh: _loadEntries,
+        child: _buildRefreshableBody(),
+      ),
     );
   }
 }

@@ -37,6 +37,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  Future<void> _refreshDashboard() {
+    _controller.reloadAccounts();
+    _controller.reloadReservations();
+    return Future<void>.value();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
@@ -69,65 +75,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const Divider(height: 1),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 20,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      FutureBuilder<List<ReservationItem>>(
-                        future: _controller.reservationsFuture,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 24),
-                              child: Center(child: CircularProgressIndicator()),
+                child: RefreshIndicator(
+                  onRefresh: _refreshDashboard,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FutureBuilder<List<ReservationItem>>(
+                          future: _controller.reservationsFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
+
+                            final reservations =
+                                snapshot.data ?? <ReservationItem>[];
+                            _controller.syncSelectedCollegeFilter(reservations);
+                            final types = ReservationType.values.toList();
+                            final weekDates = _controller.buildWeekDates();
+                            final spotsByType = _controller.buildSpotsByType(
+                              reservations,
                             );
-                          }
+                            final colorsByType = _controller.buildColorsByType(
+                              types,
+                            );
+                            final chartMaxY = _controller.computeChartMaxY(
+                              spotsByType,
+                            );
 
-                          final reservations =
-                              snapshot.data ?? <ReservationItem>[];
-                          _controller.syncSelectedCollegeFilter(reservations);
-                          final types = ReservationType.values.toList();
-                          final weekDates = _controller.buildWeekDates();
-                          final spotsByType = _controller.buildSpotsByType(
-                            reservations,
-                          );
-                          final colorsByType = _controller.buildColorsByType(
-                            types,
-                          );
-                          final chartMaxY = _controller.computeChartMaxY(
-                            spotsByType,
-                          );
-
-                          return ReservationLineChart(
-                            weekDates: weekDates,
-                            types: types,
-                            spotsByType: spotsByType,
-                            colorsByType: colorsByType,
-                            chartMaxY: chartMaxY,
-                            yInterval: _controller.computeYInterval(chartMaxY),
-                            onPickCollegeFilter: () => _controller
-                                .pickCollegeFilter(context, reservations),
-                            onPickDate: () =>
-                                _controller.pickGraphDate(context),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      const SectionTitle('User Management'),
-                      UserManagementSection(
-                        accountsFuture: _controller.accountsFuture,
-                        isSuperAdmin: _controller.isSuperAdmin,
-                        onEditRole: (account) =>
-                            _controller.editAccountRole(context, account),
-                        onDeleteAccount: (account) =>
-                            _controller.deleteAccount(context, account),
-                      ),
-                    ],
+                            return ReservationLineChart(
+                              weekDates: weekDates,
+                              types: types,
+                              spotsByType: spotsByType,
+                              colorsByType: colorsByType,
+                              chartMaxY: chartMaxY,
+                              yInterval: _controller.computeYInterval(
+                                chartMaxY,
+                              ),
+                              onPickCollegeFilter: () => _controller
+                                  .pickCollegeFilter(context, reservations),
+                              onPickDate: () =>
+                                  _controller.pickGraphDate(context),
+                              onExportExcel: () =>
+                                  _controller.exportAnalyticsToExcel(
+                                    context,
+                                    reservations,
+                                  ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        const SectionTitle('User Management'),
+                        UserManagementSection(
+                          accountsFuture: _controller.accountsFuture,
+                          isSuperAdmin: _controller.isSuperAdmin,
+                          onEditRole: (account) =>
+                              _controller.editAccountRole(context, account),
+                          onDeleteAccount: (account) =>
+                              _controller.deleteAccount(context, account),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -148,24 +167,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final title = '${widget.role} Dashboard';
     return Scaffold(
       appBar: AppBar(title: Text(title), centerTitle: true),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        children: [
-          const SectionTitle('Top Reserved Books'),
-          ...DashboardController.topBooks.map((book) => BookTile(book: book)),
-          const SizedBox(height: 24),
-          const SectionTitle('Reservation Activity (per hour)'),
-          const StatRow(
-            data: DashboardController.hourlyStudents,
-            labelKey: 'hour',
-          ),
-          const SizedBox(height: 24),
-          const SectionTitle('Reservation Activity (per day)'),
-          const StatRow(
-            data: DashboardController.dailyStudents,
-            labelKey: 'day',
-          ),
-        ],
+      body: RefreshIndicator(
+        onRefresh: _refreshDashboard,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          children: [
+            const SectionTitle('Top Reserved Books'),
+            ...DashboardController.topBooks.map((book) => BookTile(book: book)),
+            const SizedBox(height: 24),
+            const SectionTitle('Reservation Activity (per hour)'),
+            const StatRow(
+              data: DashboardController.hourlyStudents,
+              labelKey: 'hour',
+            ),
+            const SizedBox(height: 24),
+            const SectionTitle('Reservation Activity (per day)'),
+            const StatRow(
+              data: DashboardController.dailyStudents,
+              labelKey: 'day',
+            ),
+          ],
+        ),
       ),
     );
   }

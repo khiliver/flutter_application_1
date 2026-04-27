@@ -17,12 +17,12 @@ class BottomNavbar extends StatelessWidget {
       onTap: onTap,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chatbot'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Messages'),
         BottomNavigationBarItem(
           icon: Icon(Icons.notifications),
           label: 'Notifications',
         ),
-        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Reservations'),
+        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Request'),
         BottomNavigationBarItem(
           icon: Icon(Icons.person_outlined),
           label: 'Profile',

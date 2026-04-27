@@ -89,6 +89,7 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
                 cellphone: widget.reservation.cellphone,
                 college: widget.reservation.college,
                 schoolOrigin: widget.reservation.schoolOrigin,
+                library: widget.reservation.library,
                 pageStart: widget.reservation.pageStart,
                 pageEnd: widget.reservation.pageEnd,
               ),

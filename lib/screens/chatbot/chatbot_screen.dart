@@ -16,24 +16,23 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
   bool get _isFacebookConfigured => kFacebookPageHandle != 'YOUR_PAGE_HANDLE';
 
-  Future<void> _openFacebookChat() async {
-    if (_isOpening) return;
+  Future<void> _refreshScreen() {
+    if (mounted) {
+      setState(() {});
+    }
+    return Future<void>.value();
+  }
 
+  Future<void> _openUniversityLibraryPage() async {
+    if (_isOpening) return;
     setState(() {
       _isOpening = true;
     });
 
-    final messengerUri = Uri.parse(kFacebookMessengerUrl);
-    final pageUri = Uri.parse(kFacebookPageUrl);
-
-    var opened = await launchUrl(
-      messengerUri,
+    final opened = await launchUrl(
+      Uri.parse(kUniversityLibraryFacebookUrl),
       mode: LaunchMode.externalApplication,
     );
-
-    if (!opened) {
-      opened = await launchUrl(pageUri, mode: LaunchMode.externalApplication);
-    }
 
     if (!mounted) return;
     setState(() {
@@ -43,7 +42,35 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Could not open Facebook chat. Please try again.'),
+          content: Text(
+            'Could not open University Library page. Please try again.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openBuEastCampusLibraryPage() async {
+    if (_isOpening) return;
+
+    setState(() {
+      _isOpening = true;
+    });
+
+    final pageUri = Uri.parse(kFacebookPageUrl);
+    final opened = await launchUrl(pageUri, mode: LaunchMode.externalApplication);
+
+    if (!mounted) return;
+    setState(() {
+      _isOpening = false;
+    });
+
+    if (!opened) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open BU East Campus Library page. Please try again.',
+          ),
         ),
       );
     }
@@ -53,56 +80,66 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppHeader(),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.forum_outlined, size: 44),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Chat With Us on Facebook',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+      body: RefreshIndicator(
+        onRefresh: _refreshScreen,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(height: 4),
+                                ElevatedButton.icon(
+                                  onPressed:
+                                      !_isFacebookConfigured || _isOpening
+                                      ? null
+                                      : _openBuEastCampusLibraryPage,
+                                  icon: _isOpening
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.local_library_outlined),
+                                  label: Text(
+                                    _isOpening ? 'Opening...' : 'BU East Campus Library',
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                ElevatedButton.icon(
+                                  onPressed:
+                                      _isOpening
+                                      ? null
+                                      : _openUniversityLibraryPage,
+                                  icon: const Icon(Icons.local_library_outlined),
+                                  label: const Text('University Library'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _isFacebookConfigured
-                          ? 'You will be redirected to our Facebook Page chat.'
-                          : 'Facebook chat is not configured yet. Set kFacebookPageHandle in lib/constants.dart.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 18),
-                    ElevatedButton.icon(
-                      onPressed: !_isFacebookConfigured || _isOpening
-                          ? null
-                          : _openFacebookChat,
-                      icon: _isOpening
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.open_in_new),
-                      label: Text(
-                        _isOpening ? 'Opening...' : 'Open Facebook Chat',
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
+              ],
+            );
+          },
         ),
       ),
     );

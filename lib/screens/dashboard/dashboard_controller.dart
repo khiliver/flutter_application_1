@@ -1,9 +1,14 @@
 import 'dart:io';
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
+import '../../constants.dart';
 import '../../models/reservation.dart';
 import '../../services/account_storage.dart';
 import '../../services/announcement_storage.dart';
@@ -40,10 +45,15 @@ class DashboardController extends ChangeNotifier {
     final normalizedRole = role.toLowerCase();
     return normalizedRole == 'admin' ||
         normalizedRole == 'librarian' ||
+        normalizedRole == 'over all admin' ||
         normalizedRole == 'super admin';
   }
 
-  bool get isSuperAdmin => role.toLowerCase() == 'super admin';
+  bool get isSuperAdmin {
+    final normalizedRole = role.toLowerCase();
+    return normalizedRole == 'over all admin' ||
+        normalizedRole == 'super admin';
+  }
 
   static const List<Map<String, Object>> topBooks = [
     {'title': 'Introduction to Flutter', 'count': 28},
@@ -261,6 +271,149 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
+  Future<void> exportAnalyticsToExcel(
+    BuildContext context,
+    List<ReservationItem> reservations,
+  ) async {
+    try {
+      final filteredReservations = applyCollegeFilter(reservations);
+      final weekDates = buildWeekDates();
+
+      final workbook = xlsio.Workbook();
+      final summarySheet = workbook.worksheets[0];
+      summarySheet.name = 'Summary';
+
+      final types = ReservationType.values.toList();
+      summarySheet.getRangeByIndex(1, 1).setText('Date');
+      for (var i = 0; i < types.length; i++) {
+        summarySheet.getRangeByIndex(1, i + 2).setText(types[i].label);
+      }
+
+      bool sameDay(DateTime a, DateTime b) {
+        return a.year == b.year && a.month == b.month && a.day == b.day;
+      }
+
+      for (var row = 0; row < weekDates.length; row++) {
+        final day = weekDates[row];
+        summarySheet
+            .getRangeByIndex(row + 2, 1)
+            .setText(
+              '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+            );
+
+        for (var col = 0; col < types.length; col++) {
+          final type = types[col];
+          final count = filteredReservations.where((reservation) {
+            final activityDate =
+                reservation.reservationDate ?? reservation.createdAt;
+            return reservation.type == type && sameDay(activityDate, day);
+          }).length;
+          summarySheet
+              .getRangeByIndex(row + 2, col + 2)
+              .setNumber(count.toDouble());
+        }
+      }
+
+      final detailSheet = workbook.worksheets.addWithName('Reservations');
+      final headers = [
+        'Type',
+        'Status',
+        'Requester Name',
+        'Requester Email',
+        'Reservation Date',
+        'Created At',
+        'College',
+        'School Origin',
+      ];
+      for (var i = 0; i < headers.length; i++) {
+        detailSheet.getRangeByIndex(1, i + 1).setText(headers[i]);
+      }
+
+      for (var i = 0; i < filteredReservations.length; i++) {
+        final reservation = filteredReservations[i];
+        final row = i + 2;
+        final reservationDate = reservation.reservationDate;
+        final reservationDateText = reservationDate == null
+            ? ''
+            : '${reservationDate.year}-${reservationDate.month.toString().padLeft(2, '0')}-${reservationDate.day.toString().padLeft(2, '0')}';
+        final createdAt = reservation.createdAt;
+        final createdAtText =
+            '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+
+        detailSheet.getRangeByIndex(row, 1).setText(reservation.type.label);
+        detailSheet.getRangeByIndex(row, 2).setText(reservation.status.label);
+        detailSheet.getRangeByIndex(row, 3).setText(reservation.requesterName);
+        detailSheet.getRangeByIndex(row, 4).setText(reservation.requesterEmail);
+        detailSheet.getRangeByIndex(row, 5).setText(reservationDateText);
+        detailSheet.getRangeByIndex(row, 6).setText(createdAtText);
+        detailSheet.getRangeByIndex(row, 7).setText(collegeFor(reservation));
+        detailSheet
+            .getRangeByIndex(row, 8)
+            .setText(reservation.schoolOrigin.trim());
+      }
+
+      final bytes = workbook.saveAsStream();
+      workbook.dispose();
+
+      final now = DateTime.now();
+      final fileName =
+          'reservation_analytics_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+
+      String? savedPath;
+
+      final supportsNativeSaveDialog =
+          Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+      if (supportsNativeSaveDialog) {
+        const xlsxTypeGroup = XTypeGroup(label: 'Excel', extensions: ['xlsx']);
+
+        final location = await getSaveLocation(
+          suggestedName: '$fileName.xlsx',
+          acceptedTypeGroups: const [xlsxTypeGroup],
+        );
+
+        if (location == null) {
+          return;
+        }
+
+        final file = XFile.fromData(
+          Uint8List.fromList(bytes),
+          mimeType:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          name: '$fileName.xlsx',
+        );
+        await file.saveTo(location.path);
+        savedPath = location.path;
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final fallbackFile = File(
+          '${directory.path}${Platform.pathSeparator}$fileName.xlsx',
+        );
+        await fallbackFile.writeAsBytes(bytes, flush: true);
+        savedPath = fallbackFile.path;
+      }
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Analytics exported to $savedPath')),
+      );
+    } on MissingPluginException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Save dialog is unavailable on this device. Please restart the app and try again.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to export Excel file: $e')),
+      );
+    }
+  }
+
   Future<void> postAnnouncement(BuildContext context) async {
     final body = announcementBodyController.text.trim();
     final hasMedia = selectedMedia != null;
@@ -299,6 +452,11 @@ class DashboardController extends ChangeNotifier {
         recipientUserType: userType,
       );
     }
+    await NotificationStorage.instance.addAudienceNotification(
+      title: 'New announcement',
+      subtitle: notificationSubtitle,
+      recipientRole: 'Over All Admin',
+    );
 
     if (!context.mounted) {
       return;
@@ -396,16 +554,40 @@ class DashboardController extends ChangeNotifier {
       return;
     }
 
+    final assignableLibraries = kLibraryOptions
+        .where(
+          (library) =>
+              library != 'Subscribed Database' &&
+              library != 'Perpectual ebook collection',
+        )
+        .toList(growable: false);
+
     var selectedRole = account.role;
     final unitController = TextEditingController(text: account.unit ?? '');
+    String? selectedLibrary = assignableLibraries.contains(account.unit)
+        ? account.unit
+        : null;
+    if (selectedRole.toLowerCase() == 'librarian' &&
+        selectedLibrary == null &&
+        assignableLibraries.isNotEmpty) {
+      selectedLibrary = assignableLibraries.first;
+    }
+    String? dialogError;
     final result = await showDialog<_AccountEditResult>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final normalizedRole = selectedRole.toLowerCase();
             final requiresUnit =
-                selectedRole.toLowerCase() == 'admin' ||
-                selectedRole.toLowerCase() == 'librarian';
+                normalizedRole == 'admin' || normalizedRole == 'librarian';
+            final requiresLibrary = normalizedRole == 'librarian';
+            final selectedLibraryValue =
+                assignableLibraries.contains(selectedLibrary)
+                ? selectedLibrary
+                : (assignableLibraries.isNotEmpty
+                      ? assignableLibraries.first
+                      : null);
             return AlertDialog(
               title: Text('Edit account for ${account.name}'),
               content: SingleChildScrollView(
@@ -413,6 +595,7 @@ class DashboardController extends ChangeNotifier {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: selectedRole,
                       decoration: const InputDecoration(labelText: 'Role'),
                       items: assignableRoles
@@ -427,22 +610,79 @@ class DashboardController extends ChangeNotifier {
                         if (value != null) {
                           setDialogState(() {
                             selectedRole = value;
-                            if (value.toLowerCase() == 'user') {
+                            final roleKey = value.toLowerCase();
+                            if (roleKey == 'user') {
                               unitController.clear();
+                              selectedLibrary = null;
                             }
+                            if (roleKey == 'librarian' &&
+                                selectedLibrary == null &&
+                                assignableLibraries.isNotEmpty) {
+                              selectedLibrary = assignableLibraries.first;
+                            }
+                            dialogError = null;
                           });
                         }
                       },
                     ),
                     if (requiresUnit) ...[
                       const SizedBox(height: 12),
-                      TextField(
-                        controller: unitController,
-                        decoration: const InputDecoration(
-                          labelText: 'Unit',
-                          hintText: 'Enter office/unit for this account',
+                      if (requiresLibrary)
+                        DropdownButtonFormField<String>(
+                          key: ValueKey<String?>(selectedLibraryValue),
+                          isExpanded: true,
+                          initialValue: selectedLibraryValue,
+                          decoration: const InputDecoration(
+                            labelText: 'Library Assignment',
+                          ),
+                          selectedItemBuilder: (context) => assignableLibraries
+                              .map(
+                                (library) => Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    library,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          items: assignableLibraries
+                              .map(
+                                (library) => DropdownMenuItem(
+                                  value: library,
+                                  child: Text(
+                                    library,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() {
+                                selectedLibrary = value;
+                                dialogError = null;
+                              });
+                            }
+                          },
+                        )
+                      else
+                        TextField(
+                          controller: unitController,
+                          decoration: const InputDecoration(
+                            labelText: 'Unit',
+                            hintText: 'Enter office/unit for this account',
+                          ),
                         ),
-                      ),
+                      if (dialogError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          dialogError!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -454,12 +694,23 @@ class DashboardController extends ChangeNotifier {
                 ),
                 ElevatedButton(
                   onPressed: () {
+                    if (requiresLibrary &&
+                        (selectedLibrary == null ||
+                            selectedLibrary!.trim().isEmpty)) {
+                      setDialogState(() {
+                        dialogError =
+                            'Please assign a library for this librarian.';
+                      });
+                      return;
+                    }
+
+                    final selectedUnit = requiresLibrary
+                        ? selectedLibrary!.trim()
+                        : unitController.text.trim();
                     Navigator.of(context).pop(
                       _AccountEditResult(
                         role: selectedRole,
-                        unit: unitController.text.trim().isEmpty
-                            ? null
-                            : unitController.text.trim(),
+                        unit: selectedUnit.isEmpty ? null : selectedUnit,
                       ),
                     );
                   },
@@ -500,7 +751,7 @@ class DashboardController extends ChangeNotifier {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Could not update role. Only signed-in Super Admin can assign roles, or the account was changed.',
+            'Could not update role. Only signed-in Over All Admin can assign roles, or the account was changed.',
           ),
         ),
       );
@@ -551,12 +802,14 @@ class DashboardController extends ChangeNotifier {
     }
 
     if (!removed) {
-      final accountIsSuperAdmin = account.role.toLowerCase() == 'super admin';
+      final accountRole = account.role.toLowerCase();
+      final accountIsSuperAdmin =
+          accountRole == 'over all admin' || accountRole == 'super admin';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             accountIsSuperAdmin
-                ? 'Cannot delete the only Super Admin account.'
+                ? 'Cannot delete the only Over All Admin account.'
                 : 'Could not remove account. It may have been changed already.',
           ),
         ),

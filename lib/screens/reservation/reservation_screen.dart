@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../constants.dart';
 import '../../models/reservation.dart';
 import '../../services/reservation_notification_helper.dart';
 import '../../services/reservation_storage.dart';
@@ -17,12 +18,14 @@ class ReservationsScreen extends StatefulWidget {
   final String userRole;
   final String? userName;
   final String? userEmail;
+  final String? userType;
 
   const ReservationsScreen({
     super.key,
     required this.userRole,
     this.userName,
     this.userEmail,
+    this.userType,
   });
 
   @override
@@ -30,17 +33,31 @@ class ReservationsScreen extends StatefulWidget {
 }
 
 class _ReservationsScreenState extends State<ReservationsScreen> {
+  static const Set<String> _noReservationLibraries = {
+    'Perpectual ebook collection',
+    'Subscribed Database',
+  };
+
   List<ReservationItem> _reservations = [];
   bool _isLoading = true;
 
-  bool get _isAdmin => userRole.toLowerCase() == 'admin';
-  bool get _isLibrarian => userRole.toLowerCase() == 'librarian';
+  String _normalizeRoleToken(String role) {
+    return role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  }
+
+  String get _normalizedRole => _normalizeRoleToken(userRole);
+  bool get _isAdmin => _normalizedRole == 'admin';
+  bool get _isUser => _normalizedRole == 'user';
+  bool get _canManageAllRequests => _isManager;
   bool get _isManager {
-    final role = userRole.toLowerCase();
-    return role == 'admin' || role == 'librarian' || role == 'super admin';
+    return _normalizedRole == 'admin' ||
+        _normalizedRole == 'librarian' ||
+        _normalizedRole == 'overalladmin' ||
+        _normalizedRole == 'superadmin';
   }
 
   String get userRole => widget.userRole;
+  bool get _isNonBuUser => (widget.userType ?? '').toLowerCase() == 'non-bu';
 
   @override
   void initState() {
@@ -52,9 +69,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final reservations =
-          (userRole.toLowerCase() == 'admin' ||
-              userRole.toLowerCase() == 'librarian')
+      final reservations = _canManageAllRequests
           ? await ReservationStorage.instance.getReservations()
           : (widget.userEmail != null
                 ? await ReservationStorage.instance.getReservationsForUser(
@@ -71,69 +86,84 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load reservations: $e')),
+        SnackBar(content: Text('Could not load requests: $e')),
       );
     }
   }
 
-  Future<ReservationItem?> _showReservationForm(ReservationType type) async {
-    if (userRole.toLowerCase() == 'user') {
-      if (type == ReservationType.book) {
+  Future<ReservationItem?> _showReservationForm(
+    ReservationType type,
+    String library,
+  ) async {
+    if (_isUser) {
+      return _showUserReservationForm(type, library);
+    }
+
+    if (type == ReservationType.scannedCopy) {
+      return _showManagerScannedCopyRequestInput(library);
+    }
+    final title = await _showTitleInput(type);
+    if (title?.isNotEmpty ?? false) {
+      return ReservationItem(
+        type: type,
+        title: title!,
+        createdAt: DateTime.now(),
+        requesterEmail: widget.userEmail ?? '',
+        requesterName: widget.userName ?? '',
+        library: library,
+      );
+    }
+
+    return null;
+  }
+
+  Future<ReservationItem?> _showUserReservationForm(
+    ReservationType type,
+    String library,
+  ) {
+    switch (type) {
+      case ReservationType.book:
         return showDialog<ReservationItem>(
-          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => BookReservationForm(
             userEmail: widget.userEmail,
             userName: widget.userName,
+            selectedLibrary: library,
           ),
         );
-      } else if (type == ReservationType.scannedCopy) {
+      case ReservationType.scannedCopy:
         return showDialog<ReservationItem>(
-          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => ScannedCopyReservationForm(
             userEmail: widget.userEmail,
             userName: widget.userName,
+            selectedLibrary: library,
           ),
         );
-      } else if (type == ReservationType.seat) {
+      case ReservationType.seat:
         return showDialog<ReservationItem>(
-          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => SeatReservationForm(
             userEmail: widget.userEmail,
             userName: widget.userName,
+            selectedLibrary: library,
           ),
         );
-      } else if (type == ReservationType.discussionRoom) {
+      case ReservationType.discussionRoom:
         return showDialog<ReservationItem>(
-          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => DiscussionRoomReservationForm(
             userEmail: widget.userEmail,
             userName: widget.userName,
+            selectedLibrary: library,
           ),
         );
-      }
-    } else {
-      if (type == ReservationType.scannedCopy) {
-        return _showManagerScannedCopyRequestInput();
-      }
-      final title = await _showTitleInput(type);
-      if (title?.isNotEmpty ?? false) {
-        return ReservationItem(
-          type: type,
-          title: title!,
-          createdAt: DateTime.now(),
-          requesterEmail: widget.userEmail ?? '',
-          requesterName: widget.userName ?? '',
-        );
-      }
     }
-    return null;
   }
 
-  Future<ReservationItem?> _showManagerScannedCopyRequestInput() async {
+  Future<ReservationItem?> _showManagerScannedCopyRequestInput(
+    String library,
+  ) async {
     final titleController = TextEditingController();
     final pageStartController = TextEditingController();
     final pageEndController = TextEditingController();
@@ -179,6 +209,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 createdAt: DateTime.now(),
                 requesterEmail: widget.userEmail ?? '',
                 requesterName: widget.userName ?? '',
+                library: library,
                 pageStart: pageStart,
                 pageEnd: pageEnd,
               ),
@@ -274,14 +305,53 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     );
   }
 
-  Future<void> _addReservation() async {
-    final type = await showModalBottomSheet<ReservationType>(
+  Future<String?> _showLibraryPicker() {
+    return showModalBottomSheet<String>(
       context: context,
-      builder: (context) => const ReservationTypePickerDialog(),
+      builder: (context) => SafeArea(
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: kLibraryOptions.length,
+          itemBuilder: (context, index) {
+            final library = kLibraryOptions[index];
+            return ListTile(
+              leading: const Icon(Icons.local_library),
+              title: Text(library),
+              onTap: () => Navigator.of(context).pop(library),
+            );
+          },
+        ),
+      ),
     );
-    if (type == null) return;
+  }
 
-    final newReservation = await _showReservationForm(type);
+  Future<void> _addReservation() async {
+    final library = await _showLibraryPicker();
+    if (!mounted) return;
+    if (library == null) return;
+    if (_noReservationLibraries.contains(library)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Requests are not available for this library selection.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final ReservationType? selectedType;
+    if (_isNonBuUser) {
+      selectedType = ReservationType.seat;
+    } else {
+      selectedType = await showModalBottomSheet<ReservationType>(
+        context: context,
+        builder: (context) => const ReservationTypePickerDialog(),
+      );
+      if (selectedType == null) return;
+    }
+
+    final newReservation = await _showReservationForm(selectedType, library);
     if (newReservation == null) return;
 
     try {
@@ -362,6 +432,21 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     ).showSnackBar(SnackBar(content: Text('Updated "${updated.title}"')));
   }
 
+  Future<void> _clearReservations() async {
+    try {
+      await ReservationStorage.instance.clearReservations();
+      if (!mounted) return;
+      setState(() {
+        _reservations = [];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not clear requests: $e')));
+    }
+  }
+
   List<Widget> _buildActions(ReservationItem reservation, int index) {
     if (_isAdmin) {
       return [
@@ -384,17 +469,27 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     return [];
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const AppHeader(title: ''),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _reservations.isEmpty
-          ? const Center(child: Text('No reservations yet. Tap + to add one.'))
-          : ListView.builder(
-              itemCount: _reservations.length,
-              itemBuilder: (context, index) {
+  Widget _buildRefreshableReservationsBody() {
+    return RefreshIndicator(
+      onRefresh: _loadReservations,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (_isLoading)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_reservations.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text('No requests yet. Tap + to add one.'),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
                 final reservation = _reservations[index];
                 return GestureDetector(
                   onTap: () => showDialog(
@@ -405,7 +500,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                     ),
                   ),
                   onLongPress: () {
-                    if ((_isAdmin || _isLibrarian) &&
+                    if (_isManager &&
                         reservation.status != ReservationStatus.cancelled) {
                       _editReservation(index);
                     }
@@ -418,11 +513,32 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                     actions: _buildActions(reservation, index),
                   ),
                 );
-              },
+              }, childCount: _reservations.length),
             ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppHeader(
+        title: '',
+        actions: _isManager
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Clear all',
+                  onPressed: _reservations.isEmpty ? null : _clearReservations,
+                ),
+              ]
+            : null,
+      ),
+      body: _buildRefreshableReservationsBody(),
       floatingActionButton: FloatingActionButton(
         onPressed: _addReservation,
-        tooltip: 'Add reservation',
+        tooltip: 'Add request',
         child: const Icon(Icons.add),
       ),
     );

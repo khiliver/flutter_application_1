@@ -225,77 +225,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppHeader(),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-        children: [
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundImage:
-                      _avatarPath != null && _avatarPath!.isNotEmpty
-                      ? FileImage(File(_avatarPath!))
-                      : null,
-                  child: _avatarPath == null || _avatarPath!.isEmpty
-                      ? const Icon(Icons.person, size: 50)
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _name,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+      body: RefreshIndicator(
+        onRefresh: _loadLatestProfile,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+          children: [
+            Center(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundImage:
+                        _avatarPath != null && _avatarPath!.isNotEmpty
+                        ? FileImage(File(_avatarPath!))
+                        : null,
+                    child: _avatarPath == null || _avatarPath!.isEmpty
+                        ? const Icon(Icons.person, size: 50)
+                        : null,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(_email, style: const TextStyle(color: Colors.grey)),
-                if (_role != null) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 16),
                   Text(
-                    'Role: $_role',
-                    style: const TextStyle(color: Colors.grey),
+                    _name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ],
-                if (_userType != null) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    'Type: $_userType',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
+                  Text(_email, style: const TextStyle(color: Colors.grey)),
+                  if (_role != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Role: $_role',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                  if (_userType != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Type: $_userType',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 40),
-          ListTile(
-            leading: const Icon(Icons.edit),
-            title: const Text('Edit Profile'),
-            onTap: _editProfile,
-          ),
-          ListTile(
-            leading: const Icon(Icons.book),
-            title: const Text('Books'),
-            onTap: _openBooks,
-          ),
-          ListTile(
-            leading: const Icon(Icons.question_answer),
-            title: const Text('FAQ'),
-            onTap: _showFAQ,
-          ),
-          ListTile(
-            leading: const Icon(Icons.info),
-            title: const Text('About Us'),
-            onTap: _showAboutUs,
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.exit_to_app),
-            title: const Text('Sign Out'),
-            onTap: () => _signOut(context),
-          ),
-        ],
+            const SizedBox(height: 40),
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Edit Profile'),
+              onTap: _editProfile,
+            ),
+            ListTile(
+              leading: const Icon(Icons.book),
+              title: const Text('Books'),
+              onTap: _openBooks,
+            ),
+            ListTile(
+              leading: const Icon(Icons.question_answer),
+              title: const Text('FAQ'),
+              onTap: _showFAQ,
+            ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About Us'),
+              onTap: _showAboutUs,
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app),
+              title: const Text('Sign Out'),
+              onTap: () => _signOut(context),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -38,18 +38,20 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fixedLightShadTheme = ShadThemeData(
+      brightness: Brightness.light,
+      colorScheme: const ShadSlateColorScheme.light(),
+    );
+
     return ShadApp.custom(
-      theme: ShadThemeData(
-        brightness: Brightness.light,
-        colorScheme: const ShadSlateColorScheme.light(),
-      ),
-      darkTheme: ShadThemeData(
-        brightness: Brightness.dark,
-        colorScheme: const ShadSlateColorScheme.dark(),
-      ),
+      theme: fixedLightShadTheme,
+      darkTheme: fixedLightShadTheme,
+      themeMode: ThemeMode.light,
       appBuilder: (context) => MaterialApp(
         title: 'RISA',
         theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.lightTheme,
+        themeMode: ThemeMode.light,
         initialRoute: '/login',
         debugShowCheckedModeBanner: false,
         routes: {
@@ -104,6 +106,7 @@ class _MainScreenState extends State<MainScreen> {
     final isManager =
         normalizedRole == 'admin' ||
         normalizedRole == 'librarian' ||
+        normalizedRole == 'over all admin' ||
         normalizedRole == 'super admin';
 
     _tabs = [
@@ -122,6 +125,7 @@ class _MainScreenState extends State<MainScreen> {
         userRole: widget.initialRole ?? '',
         userName: widget.initialName,
         userEmail: widget.initialEmail,
+        userType: widget.initialUserType,
       ),
       ProfileScreen(
         initialEmail: widget.initialEmail,

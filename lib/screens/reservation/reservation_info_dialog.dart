@@ -23,6 +23,10 @@ class ReservationInfoDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Title: ${reservation.title}'),
+            if (reservation.library.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Library: ${reservation.library}'),
+            ],
             if (reservation.type == ReservationType.scannedCopy &&
                 reservation.hasScannedCopyPages) ...[
               const SizedBox(height: 8),

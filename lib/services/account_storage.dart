@@ -18,6 +18,11 @@ class Account {
   final String? course;
   final String? college;
   final String? department;
+  final String? schoolId;
+  final String? personelType;
+  final String? nonBuType;
+  final String? address;
+  final String? institutionOrSchool;
 
   Account({
     required this.email,
@@ -36,6 +41,11 @@ class Account {
     this.course,
     this.college,
     this.department,
+    this.schoolId,
+    this.personelType,
+    this.nonBuType,
+    this.address,
+    this.institutionOrSchool,
   });
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +65,11 @@ class Account {
     if (course != null) 'course': course,
     if (college != null) 'college': college,
     if (department != null) 'department': department,
+    if (schoolId != null) 'schoolId': schoolId,
+    if (personelType != null) 'personelType': personelType,
+    if (nonBuType != null) 'nonBuType': nonBuType,
+    if (address != null) 'address': address,
+    if (institutionOrSchool != null) 'institutionOrSchool': institutionOrSchool,
   };
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -75,6 +90,11 @@ class Account {
       course: json['course'] as String?,
       college: json['college'] as String?,
       department: json['department'] as String?,
+      schoolId: json['schoolId'] as String?,
+      personelType: json['personelType'] as String?,
+      nonBuType: json['nonBuType'] as String?,
+      address: json['address'] as String?,
+      institutionOrSchool: json['institutionOrSchool'] as String?,
     );
   }
 }
@@ -92,6 +112,11 @@ class AccountStorage {
   }
 
   bool get isReady => _db != null;
+
+  bool _isTopAdminRole(String role) {
+    final normalized = role.trim().toLowerCase();
+    return normalized == 'over all admin' || normalized == 'super admin';
+  }
 
   String _docIdForEmail(String email) => email.trim().toLowerCase();
 
@@ -138,7 +163,7 @@ class AccountStorage {
     final all = await getAccounts();
     final normalizedExcept = exceptEmail?.toLowerCase();
     return all.where((a) {
-      if (a.role.toLowerCase() != 'super admin') return false;
+      if (!_isTopAdminRole(a.role)) return false;
       if (normalizedExcept == null) return true;
       return a.email.toLowerCase() != normalizedExcept;
     }).length;
@@ -150,7 +175,7 @@ class AccountStorage {
   }
 
   Future<bool> addAccount(Account account) async {
-    if (account.role.toLowerCase() == 'super admin') {
+    if (_isTopAdminRole(account.role)) {
       final canCreate = await canCreateSuperAdmin();
       if (!canCreate) return false;
     }
@@ -171,7 +196,7 @@ class AccountStorage {
     required String actingUserRole,
     String? unit,
   }) async {
-    if (actingUserRole.toLowerCase() != 'super admin') {
+    if (!_isTopAdminRole(actingUserRole)) {
       return false;
     }
 
@@ -183,7 +208,7 @@ class AccountStorage {
     final normalizedRole = role.toLowerCase();
     final normalizedUnit = unit?.trim();
 
-    // Super Admin role is protected and cannot be assigned from user management.
+    // Over All Admin role is protected and cannot be assigned from user management.
     if (!{'user', 'librarian', 'admin'}.contains(normalizedRole)) {
       return false;
     }
@@ -211,6 +236,13 @@ class AccountStorage {
       course: normalizedRole == 'user' ? current.course : null,
       college: normalizedRole == 'user' ? current.college : null,
       department: normalizedRole == 'user' ? current.department : null,
+      schoolId: normalizedRole == 'user' ? current.schoolId : null,
+      personelType: normalizedRole == 'user' ? current.personelType : null,
+      nonBuType: normalizedRole == 'user' ? current.nonBuType : null,
+      address: normalizedRole == 'user' ? current.address : null,
+      institutionOrSchool: normalizedRole == 'user'
+          ? current.institutionOrSchool
+          : null,
     );
 
     await _upsertAccount(updated);
@@ -244,6 +276,11 @@ class AccountStorage {
       course: current.course,
       college: current.college,
       department: current.department,
+      schoolId: current.schoolId,
+      personelType: current.personelType,
+      nonBuType: current.nonBuType,
+      address: current.address,
+      institutionOrSchool: current.institutionOrSchool,
     );
 
     await _upsertAccount(updated);
@@ -256,7 +293,7 @@ class AccountStorage {
       return false;
     }
 
-    if (account.role.toLowerCase() == 'super admin') {
+    if (_isTopAdminRole(account.role)) {
       final superAdminCount = await _superAdminCount();
       if (superAdminCount <= 1) {
         return false;
@@ -269,5 +306,17 @@ class AccountStorage {
 
     await _db!.doc(_docIdForEmail(email)).delete();
     return true;
+  }
+
+  Future<List<Account>> getLibrariansForLibrary(String library) async {
+    final normalizedLibrary = library.trim().toLowerCase();
+    if (normalizedLibrary.isEmpty) return [];
+
+    final accounts = await getAccounts();
+    return accounts.where((account) {
+      final isLibrarian = account.role.toLowerCase() == 'librarian';
+      final assignedLibrary = account.unit?.trim().toLowerCase() ?? '';
+      return isLibrarian && assignedLibrary == normalizedLibrary;
+    }).toList();
   }
 }

@@ -15,14 +15,14 @@ RISA is a Flutter app for library workflows, including account-based access, res
 	- User
 	- Librarian
 	- Admin
-	- Super Admin
+	- Over All Admin
 - Reservation management:
 	- Create reservations
 	- Edit/cancel/delete (based on role and status)
 	- Reservation details and status transitions
 - Dashboard:
 	- Announcement posting
-	- Account management (Super Admin controls role edits)
+	- Account management (Over All Admin controls role edits)
 	- Reservation trend line graph connected to reservation data
 - Notifications:
 	- Global and recipient-targeted notifications
@@ -31,8 +31,8 @@ RISA is a Flutter app for library workflows, including account-based access, res
 ## Role Rules
 
 - Sign up creates User accounts only.
-- Admin and Librarian roles are assigned by Super Admin from dashboard user management.
-- Super Admin accounts are hidden from Admin user list views.
+- Admin and Librarian roles are assigned by Over All Admin from dashboard user management.
+- Over All Admin accounts are hidden from Admin user list views.
 
 ## Project Structure
 
