@@ -5,7 +5,10 @@ import '../../constants.dart';
 import '../../widgets/app_header.dart';
 
 class ChatbotScreen extends StatefulWidget {
-  const ChatbotScreen({super.key});
+  final VoidCallback? onProfilePressed;
+  final VoidCallback? onLogoPressed;
+
+  const ChatbotScreen({super.key, this.onProfilePressed, this.onLogoPressed});
 
   @override
   State<ChatbotScreen> createState() => _ChatbotScreenState();
@@ -13,8 +16,25 @@ class ChatbotScreen extends StatefulWidget {
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
   bool _isOpening = false;
+  String _openingLibrary = '';
 
   bool get _isFacebookConfigured => kFacebookPageHandle != 'YOUR_PAGE_HANDLE';
+
+  // Library contact information
+  final List<({String name, String url})> _libraries = const [
+    (
+      name: 'BUCEILS Children and Highschool Library',
+      url: kBuceailsChildrenLibraryFacebookUrl,
+    ),
+    (name: 'University Library', url: kUniversityLibraryFacebookUrl),
+    (name: 'College of Law', url: kCollegeOfLawFacebookUrl),
+    (name: 'Health and Science Library', url: kHealthScienceLibraryFacebookUrl),
+    (name: 'East Campus', url: kEastCampusLibraryFacebookUrl),
+    (name: 'Tabaco Campus', url: kTabacoCampusLibraryFacebookUrl),
+    (name: 'Guinobatan Campus', url: kGuinoatanCampusLibraryFacebookUrl),
+    (name: 'Polangui Campus', url: kPolanguiCampusLibraryFacebookUrl),
+    (name: 'Gubat Campus', url: kGubatCampusLibraryFacebookUrl),
+  ];
 
   Future<void> _refreshScreen() {
     if (mounted) {
@@ -23,54 +43,28 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     return Future<void>.value();
   }
 
-  Future<void> _openUniversityLibraryPage() async {
+  Future<void> _openLibraryPage(String libraryName, String url) async {
     if (_isOpening) return;
     setState(() {
       _isOpening = true;
+      _openingLibrary = libraryName;
     });
 
     final opened = await launchUrl(
-      Uri.parse(kUniversityLibraryFacebookUrl),
+      Uri.parse(url),
       mode: LaunchMode.externalApplication,
     );
 
     if (!mounted) return;
     setState(() {
       _isOpening = false;
+      _openingLibrary = '';
     });
 
     if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open University Library page. Please try again.',
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _openBuEastCampusLibraryPage() async {
-    if (_isOpening) return;
-
-    setState(() {
-      _isOpening = true;
-    });
-
-    final pageUri = Uri.parse(kFacebookPageUrl);
-    final opened = await launchUrl(pageUri, mode: LaunchMode.externalApplication);
-
-    if (!mounted) return;
-    setState(() {
-      _isOpening = false;
-    });
-
-    if (!opened) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open BU East Campus Library page. Please try again.',
-          ),
+        SnackBar(
+          content: Text('Could not open $libraryName page. Please try again.'),
         ),
       );
     }
@@ -79,7 +73,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(),
+      appBar: AppHeader(
+        onProfilePressed: widget.onProfilePressed,
+        onLogoPressed: widget.onLogoPressed,
+      ),
       body: RefreshIndicator(
         onRefresh: _refreshScreen,
         child: LayoutBuilder(
@@ -102,33 +99,47 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 const SizedBox(height: 4),
-                                ElevatedButton.icon(
-                                  onPressed:
-                                      !_isFacebookConfigured || _isOpening
-                                      ? null
-                                      : _openBuEastCampusLibraryPage,
-                                  icon: _isOpening
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.local_library_outlined),
-                                  label: Text(
-                                    _isOpening ? 'Opening...' : 'BU East Campus Library',
+                                const Text(
+                                  'Library Contact',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(height: 10),
-                                ElevatedButton.icon(
-                                  onPressed:
-                                      _isOpening
-                                      ? null
-                                      : _openUniversityLibraryPage,
-                                  icon: const Icon(Icons.local_library_outlined),
-                                  label: const Text('University Library'),
-                                ),
+                                const SizedBox(height: 16),
+                                ..._libraries.map((library) {
+                                  final isLoadingThis =
+                                      _isOpening &&
+                                      _openingLibrary == library.name;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: ElevatedButton.icon(
+                                      onPressed:
+                                          !_isFacebookConfigured || _isOpening
+                                          ? null
+                                          : () => _openLibraryPage(
+                                              library.name,
+                                              library.url,
+                                            ),
+                                      icon: isLoadingThis
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.local_library_outlined,
+                                            ),
+                                      label: Text(
+                                        isLoadingThis
+                                            ? 'Opening...'
+                                            : library.name,
+                                      ),
+                                    ),
+                                  );
+                                }),
                               ],
                             ),
                           ),

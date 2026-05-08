@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-enum ReservationType { seat, discussionRoom, book, scannedCopy }
+enum ReservationType { seat, discussionRoom, book, scannedCopy, collection }
 
 extension ReservationTypeExt on ReservationType {
   String get label {
@@ -9,11 +9,13 @@ extension ReservationTypeExt on ReservationType {
       case ReservationType.seat:
         return 'Seat';
       case ReservationType.discussionRoom:
-        return 'Discussion Room';
+        return 'Facility';
       case ReservationType.book:
         return 'Book';
       case ReservationType.scannedCopy:
         return 'Scanned Copy';
+      case ReservationType.collection:
+        return 'Collection';
     }
   }
 
@@ -27,17 +29,23 @@ extension ReservationTypeExt on ReservationType {
         return Icons.book;
       case ReservationType.scannedCopy:
         return Icons.document_scanner;
+      case ReservationType.collection:
+        return Icons.library_books;
     }
   }
 }
 
-enum ReservationStatus { pending, done, cancelled }
+enum ReservationStatus { pending, accepted, declined, done, cancelled }
 
 extension ReservationStatusExt on ReservationStatus {
   String get label {
     switch (this) {
       case ReservationStatus.pending:
         return 'Pending';
+      case ReservationStatus.accepted:
+        return 'Accepted';
+      case ReservationStatus.declined:
+        return 'Declined';
       case ReservationStatus.done:
         return 'Done';
       case ReservationStatus.cancelled:
@@ -65,8 +73,19 @@ class ReservationItem {
   final String college;
   final String schoolOrigin;
   final String library;
+  final String service;
+  final String author;
   final int pageStart;
   final int pageEnd;
+  String adminMessage;
+  DateTime? startTime;
+  DateTime? endTime;
+
+  // Collection request fields
+  final String collectionName;
+  final String collectionDescription;
+  final String requestReason;
+  final int desiredQuantity;
 
   ReservationItem({
     String? id,
@@ -85,8 +104,17 @@ class ReservationItem {
     this.college = '',
     this.schoolOrigin = '',
     this.library = '',
+    this.service = '',
+    this.author = '',
     this.pageStart = 0,
     this.pageEnd = 0,
+    this.adminMessage = '',
+    this.startTime,
+    this.endTime,
+    this.collectionName = '',
+    this.collectionDescription = '',
+    this.requestReason = '',
+    this.desiredQuantity = 0,
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
 
   bool get hasScannedCopyPages => pageStart > 0 && pageEnd > 0;
@@ -119,40 +147,70 @@ class ReservationItem {
     'college': college,
     'schoolOrigin': schoolOrigin,
     'library': library,
+    'service': service,
+    'author': author,
     'pageStart': pageStart,
     'pageEnd': pageEnd,
+    'adminMessage': adminMessage,
+    'startTime': startTime?.toIso8601String(),
+    'endTime': endTime?.toIso8601String(),
+    'collectionName': collectionName,
+    'collectionDescription': collectionDescription,
+    'requestReason': requestReason,
+    'desiredQuantity': desiredQuantity,
   };
 
   factory ReservationItem.fromJson(Map<String, dynamic> json) {
     return ReservationItem(
-      id: json['id'] as String?,
+      id: _stringValue(json['id']),
       type: ReservationType.values.firstWhere(
         (e) => e.toString() == json['type'],
         orElse: () => ReservationType.book,
       ),
-      title: json['title'] as String,
+      title: _stringValue(json['title'], fallback: 'Reservation'),
       createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
       status: ReservationStatus.values.firstWhere(
         (e) => e.toString() == json['status'],
         orElse: () => ReservationStatus.pending,
       ),
-      requesterEmail: json['requesterEmail'] as String? ?? '',
-      requesterName: json['requesterName'] as String? ?? '',
-      firstName: json['firstName'] as String? ?? '',
-      middleName: json['middleName'] as String? ?? '',
-      surname: json['surname'] as String? ?? '',
+      requesterEmail: _stringValue(json['requesterEmail']),
+      requesterName: _stringValue(json['requesterName']),
+      firstName: _stringValue(json['firstName']),
+      middleName: _stringValue(json['middleName']),
+      surname: _stringValue(json['surname']),
       reservationDate: _parseDateTime(json['reservationDate']),
-      schoolId: json['schoolId'] as String? ?? '',
-      cellphone: json['cellphone'] as String? ?? '',
-      college:
-          (json['college'] as String?) ??
-          (json['schoolOrigin'] as String?) ??
-          '',
-      schoolOrigin: json['schoolOrigin'] as String? ?? '',
-      library: json['library'] as String? ?? '',
-      pageStart: json['pageStart'] as int? ?? 0,
-      pageEnd: json['pageEnd'] as int? ?? 0,
+      schoolId: _stringValue(json['schoolId']),
+      cellphone: _stringValue(json['cellphone']),
+      college: _stringValue(
+        json['college'],
+        fallback: _stringValue(json['schoolOrigin']),
+      ),
+      schoolOrigin: _stringValue(json['schoolOrigin']),
+      library: _stringValue(json['library']),
+      service: _stringValue(json['service']),
+      author: _stringValue(json['author']),
+      pageStart: _intValue(json['pageStart']),
+      pageEnd: _intValue(json['pageEnd']),
+      adminMessage: _stringValue(json['adminMessage']),
+      startTime: _parseDateTime(json['startTime']),
+      endTime: _parseDateTime(json['endTime']),
+      collectionName: _stringValue(json['collectionName']),
+      collectionDescription: _stringValue(json['collectionDescription']),
+      requestReason: _stringValue(json['requestReason']),
+      desiredQuantity: _intValue(json['desiredQuantity']),
     );
+  }
+
+  static String _stringValue(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text == 'null') return fallback;
+    return text;
+  }
+
+  static int _intValue(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
   static DateTime? _parseDateTime(dynamic value) {

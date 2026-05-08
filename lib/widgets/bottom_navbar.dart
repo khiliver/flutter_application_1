@@ -23,10 +23,6 @@ class BottomNavbar extends StatelessWidget {
           label: 'Notifications',
         ),
         BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Request'),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.person_outlined),
-          label: 'Profile',
-        ),
       ],
       type: BottomNavigationBarType.fixed,
     );

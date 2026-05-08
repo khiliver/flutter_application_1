@@ -21,12 +21,16 @@ class _EJournalScreenState extends State<EJournalScreen> {
   bool _isSaving = false;
   List<EJournalEntry> _entries = [];
 
+  String _normalizeRole(String? role) {
+    return (role ?? '').trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  }
+
   bool get _canManageEntries {
-    final normalizedRole = (widget.userRole ?? '').toLowerCase();
+    final normalizedRole = _normalizeRole(widget.userRole);
     return normalizedRole == 'admin' ||
         normalizedRole == 'librarian' ||
-        normalizedRole == 'over all admin' ||
-        normalizedRole == 'super admin';
+        normalizedRole == 'overalladmin' ||
+        normalizedRole == 'superadmin';
   }
 
   bool get _canViewEntries {
@@ -111,7 +115,7 @@ class _EJournalScreenState extends State<EJournalScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(entry == null ? 'Add E-Journal' : 'Edit E-Journal'),
+          title: Text(entry == null ? 'Add Facility' : 'Edit Facility'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -217,7 +221,7 @@ class _EJournalScreenState extends State<EJournalScreen> {
           SizedBox(height: 220),
           Center(
             child: Text(
-              'E-Journals are available for students and Non-BU users.',
+              'Facilities are available for students and Non-BU users.',
             ),
           ),
         ],
@@ -239,7 +243,7 @@ class _EJournalScreenState extends State<EJournalScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 220),
-          Center(child: Text('No e-journals added yet.')),
+          Center(child: Text('No facilities added yet.')),
         ],
       );
     }

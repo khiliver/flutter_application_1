@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../models/reservation.dart';
+import '../../services/account_storage.dart';
+import '../../services/reservation_storage.dart';
+import 'reservation_form_user_info.dart';
 
 /// Form for students to reserve a book.
 /// Collects: book title, name, date, school ID, cellphone, college, from school.
@@ -9,12 +12,14 @@ class BookReservationForm extends StatefulWidget {
   final String? userEmail;
   final String? userName;
   final String? selectedLibrary;
+  final Account? userAccount;
 
   const BookReservationForm({
     super.key,
     this.userEmail,
     this.userName,
     this.selectedLibrary,
+    this.userAccount,
   });
 
   @override
@@ -23,27 +28,86 @@ class BookReservationForm extends StatefulWidget {
 
 class _BookReservationFormState extends State<BookReservationForm> {
   final titleController = TextEditingController();
-  final firstNameController = TextEditingController();
-  final middleNameController = TextEditingController();
-  final surnameController = TextEditingController();
-  final schoolIdController = TextEditingController();
-  final cellphoneController = TextEditingController();
-  final collegeController = TextEditingController();
-  final schoolOriginController = TextEditingController();
+  final authorController = TextEditingController();
 
   DateTime? selectedDate;
+  TimeOfDay? selectedTime;
+  String? errorText;
+  int _activeBookReservations = 0;
+  bool _isLoadingBookCount = true;
   final formKey = GlobalKey<ShadFormState>();
+
+  int get _bookReservationLimit {
+    final userType = (widget.userAccount?.userType ?? '').trim().toLowerCase();
+    final personelType = (widget.userAccount?.personelType ?? '')
+        .trim()
+        .toLowerCase();
+
+    if (userType == 'student') {
+      return 2;
+    }
+
+    if (userType == 'personel' &&
+        (personelType == 'faculty' ||
+            personelType == 'non-teaching personel')) {
+      return 5;
+    }
+
+    return 2;
+  }
+
+  Future<int> _countActiveBookReservations(String requesterEmail) async {
+    if (requesterEmail.trim().isEmpty) return 0;
+
+    final reservations = await ReservationStorage.instance
+        .getReservationsForUser(requesterEmail);
+    return reservations
+        .where(
+          (reservation) =>
+              reservation.type == ReservationType.book &&
+              reservation.status != ReservationStatus.cancelled,
+        )
+        .length;
+  }
+
+  Future<void> _loadBookReservationCount() async {
+    final requesterEmail = (widget.userEmail ?? widget.userAccount?.email ?? '')
+        .trim();
+    if (requesterEmail.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _activeBookReservations = 0;
+        _isLoadingBookCount = false;
+      });
+      return;
+    }
+
+    try {
+      final count = await _countActiveBookReservations(requesterEmail);
+      if (!mounted) return;
+      setState(() {
+        _activeBookReservations = count;
+        _isLoadingBookCount = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _activeBookReservations = 0;
+        _isLoadingBookCount = false;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBookReservationCount();
+  }
 
   @override
   void dispose() {
     titleController.dispose();
-    firstNameController.dispose();
-    middleNameController.dispose();
-    surnameController.dispose();
-    schoolIdController.dispose();
-    cellphoneController.dispose();
-    collegeController.dispose();
-    schoolOriginController.dispose();
+    authorController.dispose();
     super.dispose();
   }
 
@@ -67,35 +131,95 @@ class _BookReservationFormState extends State<BookReservationForm> {
     }
   }
 
-  void _submit() {
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedTime = picked;
+        errorText = null;
+      });
+    }
+  }
+
+  Future<void> _submit() async {
     final bookTitle = titleController.text.trim();
-    if (selectedDate == null) return;
+    final author = authorController.text.trim();
+    if (selectedDate == null || selectedTime == null) {
+      setState(() {
+        errorText = 'Please choose both date and time.';
+      });
+      return;
+    }
     if (bookTitle.isEmpty) {
       return;
     }
+    if (author.isEmpty) {
+      setState(() {
+        errorText = 'Please enter the author name.';
+      });
+      return;
+    }
 
-    final name =
-        '${firstNameController.text.trim()} ${middleNameController.text.trim()} ${surnameController.text.trim()}'
-            .trim();
-
-    Navigator.of(context).pop(
-      ReservationItem(
-        type: ReservationType.book,
-        title: bookTitle,
-        createdAt: DateTime.now(),
-        requesterEmail: widget.userEmail ?? '',
-        requesterName: name.isNotEmpty ? name : widget.userName ?? '',
-        firstName: firstNameController.text.trim(),
-        middleName: middleNameController.text.trim(),
-        surname: surnameController.text.trim(),
-        reservationDate: selectedDate,
-        schoolId: schoolIdController.text.trim(),
-        cellphone: cellphoneController.text.trim(),
-        college: collegeController.text.trim(),
-        schoolOrigin: schoolOriginController.text.trim(),
-        library: widget.selectedLibrary ?? '',
-      ),
+    final userInfo = ReservationFormUserInfo.fromAccount(
+      widget.userAccount,
+      fallbackEmail: widget.userEmail,
+      fallbackName: widget.userName,
     );
+    final slotStart = combineDateAndTime(selectedDate!, selectedTime!);
+    final slotEnd = slotStart.add(const Duration(hours: 2));
+
+    try {
+      final activeBookReservations = await _countActiveBookReservations(
+        userInfo.requesterEmail,
+      );
+
+      if (!mounted) return;
+
+      if (activeBookReservations >= _bookReservationLimit) {
+        setState(() {
+          errorText =
+              'You can only reserve $_bookReservationLimit book(s) at a time.';
+        });
+        return;
+      }
+
+      Navigator.of(context).pop(
+        ReservationItem(
+          type: ReservationType.book,
+          title: bookTitle,
+          createdAt: DateTime.now(),
+          requesterEmail: userInfo.requesterEmail,
+          requesterName: userInfo.requesterName,
+          firstName: userInfo.firstName,
+          middleName: userInfo.middleName,
+          surname: userInfo.surname,
+          reservationDate: slotStart,
+          schoolId: userInfo.schoolId,
+          cellphone: userInfo.cellphone,
+          college: userInfo.college,
+          schoolOrigin: userInfo.schoolOrigin,
+          library: widget.selectedLibrary ?? '',
+          service: '',
+          author: author,
+          startTime: slotStart,
+          endTime: slotEnd,
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+          _activeBookReservations += 1;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not check book limit: $e')));
+    }
   }
 
   @override
@@ -123,18 +247,8 @@ class _BookReservationFormState extends State<BookReservationForm> {
                 ),
                 const SizedBox(height: 12),
                 ShadInput(
-                  controller: firstNameController,
-                  placeholder: const Text('First Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: middleNameController,
-                  placeholder: const Text('Middle Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: surnameController,
-                  placeholder: const Text('Surname'),
+                  controller: authorController,
+                  placeholder: const Text('Author'),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -148,25 +262,35 @@ class _BookReservationFormState extends State<BookReservationForm> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolIdController,
-                  placeholder: const Text('School ID / Student ID'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Time to reserve: ${formatTimeOfDay(selectedTime)}',
+                      ),
+                    ),
+                    TextButton(onPressed: _pickTime, child: const Text('Pick')),
+                  ],
                 ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      errorText!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
-                ShadInput(
-                  controller: cellphoneController,
-                  placeholder: const Text('Cellphone Number'),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: collegeController,
-                  placeholder: const Text('From College'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolOriginController,
-                  placeholder: const Text('From School'),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _isLoadingBookCount
+                        ? 'Checking your current book reservations...'
+                        : 'You currently have $_activeBookReservations of $_bookReservationLimit book reservation(s).',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
                 ),
               ],
             ),

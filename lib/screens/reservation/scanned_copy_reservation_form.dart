@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../models/reservation.dart';
+import '../../services/account_storage.dart';
+import 'reservation_form_user_info.dart';
 
 /// Form for students to request a scanned copy.
 /// Collects: book title, page range (max 20 pages), and requester details.
@@ -9,12 +11,14 @@ class ScannedCopyReservationForm extends StatefulWidget {
   final String? userEmail;
   final String? userName;
   final String? selectedLibrary;
+  final Account? userAccount;
 
   const ScannedCopyReservationForm({
     super.key,
     this.userEmail,
     this.userName,
     this.selectedLibrary,
+    this.userAccount,
   });
 
   @override
@@ -25,32 +29,28 @@ class ScannedCopyReservationForm extends StatefulWidget {
 class _ScannedCopyReservationFormState
     extends State<ScannedCopyReservationForm> {
   final titleController = TextEditingController();
+  final authorController = TextEditingController();
   final pageStartController = TextEditingController();
   final pageEndController = TextEditingController();
-  final firstNameController = TextEditingController();
-  final middleNameController = TextEditingController();
-  final surnameController = TextEditingController();
-  final schoolIdController = TextEditingController();
-  final cellphoneController = TextEditingController();
-  final collegeController = TextEditingController();
-  final schoolOriginController = TextEditingController();
 
   DateTime? selectedDate;
+  TimeOfDay? selectedTime;
+  String _selectedDocumentType = 'Thesis';
   String? errorText;
   final formKey = GlobalKey<ShadFormState>();
+
+  final List<String> _documentTypeOptions = [
+    'Thesis',
+    'Printed Journals',
+    'Periodical',
+  ];
 
   @override
   void dispose() {
     titleController.dispose();
+    authorController.dispose();
     pageStartController.dispose();
     pageEndController.dispose();
-    firstNameController.dispose();
-    middleNameController.dispose();
-    surnameController.dispose();
-    schoolIdController.dispose();
-    cellphoneController.dispose();
-    collegeController.dispose();
-    schoolOriginController.dispose();
     super.dispose();
   }
 
@@ -74,17 +74,36 @@ class _ScannedCopyReservationFormState
     }
   }
 
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedTime = picked;
+        errorText = null;
+      });
+    }
+  }
+
   void _submit() {
+    final documentType = _selectedDocumentType.trim();
     final bookTitle = titleController.text.trim();
+    final author = authorController.text.trim();
     final pageStart = int.tryParse(pageStartController.text.trim());
     final pageEnd = int.tryParse(pageEndController.text.trim());
 
     if (selectedDate == null ||
+        selectedTime == null ||
+        documentType.isEmpty ||
         bookTitle.isEmpty ||
+        author.isEmpty ||
         pageStart == null ||
         pageEnd == null) {
       setState(() {
-        errorText = 'Please complete title, date, and page range.';
+        errorText =
+            'Please complete document type, title, author, date, time, and page range.';
       });
       return;
     }
@@ -104,28 +123,36 @@ class _ScannedCopyReservationFormState
       return;
     }
 
-    final name =
-        '${firstNameController.text.trim()} ${middleNameController.text.trim()} ${surnameController.text.trim()}'
-            .trim();
+    final userInfo = ReservationFormUserInfo.fromAccount(
+      widget.userAccount,
+      fallbackEmail: widget.userEmail,
+      fallbackName: widget.userName,
+    );
+    final slotStart = combineDateAndTime(selectedDate!, selectedTime!);
+    final slotEnd = slotStart.add(const Duration(hours: 2));
 
     Navigator.of(context).pop(
       ReservationItem(
         type: ReservationType.scannedCopy,
         title: bookTitle,
         createdAt: DateTime.now(),
-        requesterEmail: widget.userEmail ?? '',
-        requesterName: name.isNotEmpty ? name : widget.userName ?? '',
-        firstName: firstNameController.text.trim(),
-        middleName: middleNameController.text.trim(),
-        surname: surnameController.text.trim(),
-        reservationDate: selectedDate,
-        schoolId: schoolIdController.text.trim(),
-        cellphone: cellphoneController.text.trim(),
-        college: collegeController.text.trim(),
-        schoolOrigin: schoolOriginController.text.trim(),
+        requesterEmail: userInfo.requesterEmail,
+        requesterName: userInfo.requesterName,
+        firstName: userInfo.firstName,
+        middleName: userInfo.middleName,
+        surname: userInfo.surname,
+        reservationDate: slotStart,
+        schoolId: userInfo.schoolId,
+        cellphone: userInfo.cellphone,
+        college: userInfo.college,
+        schoolOrigin: userInfo.schoolOrigin,
         library: widget.selectedLibrary ?? '',
+        service: documentType,
+        author: author,
         pageStart: pageStart,
         pageEnd: pageEnd,
+        startTime: slotStart,
+        endTime: slotEnd,
       ),
     );
   }
@@ -149,9 +176,37 @@ class _ScannedCopyReservationFormState
                   ),
                   const SizedBox(height: 12),
                 ],
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedDocumentType,
+                  decoration: const InputDecoration(
+                    labelText: 'Document type',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _documentTypeOptions
+                      .map(
+                        (type) => DropdownMenuItem<String>(
+                          value: type,
+                          child: Text(type),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _selectedDocumentType = value;
+                      errorText = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
                 ShadInput(
                   controller: titleController,
-                  placeholder: const Text('Book title'),
+                  placeholder: const Text('Title'),
+                ),
+                const SizedBox(height: 12),
+                ShadInput(
+                  controller: authorController,
+                  placeholder: const Text('Author'),
                 ),
                 const SizedBox(height: 12),
                 ShadInput(
@@ -177,40 +232,15 @@ class _ScannedCopyReservationFormState
                   ],
                 ),
                 const SizedBox(height: 12),
-                ShadInput(
-                  controller: firstNameController,
-                  placeholder: const Text('First Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: middleNameController,
-                  placeholder: const Text('Middle Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: surnameController,
-                  placeholder: const Text('Surname'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolIdController,
-                  placeholder: const Text('School ID / Student ID'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: cellphoneController,
-                  placeholder: const Text('Cellphone Number'),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: collegeController,
-                  placeholder: const Text('From College'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolOriginController,
-                  placeholder: const Text('From School'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Time to reserve: ${formatTimeOfDay(selectedTime)}',
+                      ),
+                    ),
+                    TextButton(onPressed: _pickTime, child: const Text('Pick')),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 const Align(

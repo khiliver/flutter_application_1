@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/account_storage.dart';
 import '../../widgets/app_header.dart';
@@ -51,6 +52,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted || account == null) return;
       setState(() {
         _name = account.name;
+        _email = account.email;
+        _role = account.role;
+        _userType = account.userType;
         _avatarPath = account.avatarPath;
       });
     } catch (_) {
@@ -62,10 +66,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.of(context).pushReplacementNamed('/login');
   }
 
+  Future<void> _openFeedbackForm() async {
+    final uri = Uri.parse('http://tinyurl.com/BULS-CSMsurveyform');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the feedback form.')),
+      );
+    }
+  }
+
   Future<void> _editProfile() async {
     final result = await Navigator.of(context).pushNamed(
       '/editProfile',
-      arguments: {'name': _name, 'email': _email, 'avatarPath': _avatarPath},
+      arguments: {
+        'name': _name,
+        'email': _email,
+        'role': _role,
+        'userType': _userType,
+        'avatarPath': _avatarPath,
+      },
     );
     if (result is Map) {
       setState(() {
@@ -286,6 +306,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               leading: const Icon(Icons.question_answer),
               title: const Text('FAQ'),
               onTap: _showFAQ,
+            ),
+            ListTile(
+              leading: const Icon(Icons.feedback),
+              title: const Text('Feedback'),
+              onTap: _openFeedbackForm,
             ),
             ListTile(
               leading: const Icon(Icons.info),

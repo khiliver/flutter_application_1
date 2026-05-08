@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../models/reservation.dart';
+import '../../services/account_storage.dart';
+import 'reservation_form_user_info.dart';
 
 /// Form for students to reserve a seat.
 /// Collects: name, date, school ID, cellphone, college, from school.
@@ -9,12 +11,14 @@ class SeatReservationForm extends StatefulWidget {
   final String? userEmail;
   final String? userName;
   final String? selectedLibrary;
+  final Account? userAccount;
 
   const SeatReservationForm({
     super.key,
     this.userEmail,
     this.userName,
     this.selectedLibrary,
+    this.userAccount,
   });
 
   @override
@@ -22,32 +26,32 @@ class SeatReservationForm extends StatefulWidget {
 }
 
 class _SeatReservationFormState extends State<SeatReservationForm> {
-  final firstNameController = TextEditingController();
-  final middleNameController = TextEditingController();
-  final surnameController = TextEditingController();
-  final schoolIdController = TextEditingController();
-  final cellphoneController = TextEditingController();
-  final collegeController = TextEditingController();
-  final schoolOriginController = TextEditingController();
-
   DateTime? selectedDate;
+  TimeOfDay? selectedTime;
+  String? errorText;
   final formKey = GlobalKey<ShadFormState>();
-
-  @override
-  void dispose() {
-    firstNameController.dispose();
-    middleNameController.dispose();
-    surnameController.dispose();
-    schoolIdController.dispose();
-    cellphoneController.dispose();
-    collegeController.dispose();
-    schoolOriginController.dispose();
-    super.dispose();
-  }
 
   String formatDate(DateTime? date) {
     if (date == null) return 'Choose date';
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedTime = picked;
+        errorText = null;
+      });
+    }
   }
 
   void _pickDate() async {
@@ -66,28 +70,40 @@ class _SeatReservationFormState extends State<SeatReservationForm> {
   }
 
   void _submit() {
-    if (selectedDate == null) return;
+    if (selectedDate == null || selectedTime == null) {
+      setState(() {
+        errorText = 'Please choose both date and time.';
+      });
+      return;
+    }
 
-    final name =
-        '${firstNameController.text.trim()} ${middleNameController.text.trim()} ${surnameController.text.trim()}'
-            .trim();
+    final userInfo = ReservationFormUserInfo.fromAccount(
+      widget.userAccount,
+      fallbackEmail: widget.userEmail,
+      fallbackName: widget.userName,
+    );
+    final slotStart = combineDateAndTime(selectedDate!, selectedTime!);
+    final slotEnd = slotStart.add(const Duration(hours: 2));
 
     Navigator.of(context).pop(
       ReservationItem(
         type: ReservationType.seat,
         title: ReservationType.seat.label,
         createdAt: DateTime.now(),
-        requesterEmail: widget.userEmail ?? '',
-        requesterName: name.isNotEmpty ? name : widget.userName ?? '',
-        firstName: firstNameController.text.trim(),
-        middleName: middleNameController.text.trim(),
-        surname: surnameController.text.trim(),
-        reservationDate: selectedDate,
-        schoolId: schoolIdController.text.trim(),
-        cellphone: cellphoneController.text.trim(),
-        college: collegeController.text.trim(),
-        schoolOrigin: schoolOriginController.text.trim(),
+        requesterEmail: userInfo.requesterEmail,
+        requesterName: userInfo.requesterName,
+        firstName: userInfo.firstName,
+        middleName: userInfo.middleName,
+        surname: userInfo.surname,
+        reservationDate: slotStart,
+        schoolId: userInfo.schoolId,
+        cellphone: userInfo.cellphone,
+        college: userInfo.college,
+        schoolOrigin: userInfo.schoolOrigin,
         library: widget.selectedLibrary ?? '',
+        service: '',
+        startTime: slotStart,
+        endTime: slotEnd,
       ),
     );
   }
@@ -111,21 +127,7 @@ class _SeatReservationFormState extends State<SeatReservationForm> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                ShadInput(
-                  controller: firstNameController,
-                  placeholder: const Text('First Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: middleNameController,
-                  placeholder: const Text('Middle Name'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: surnameController,
-                  placeholder: const Text('Surname'),
-                ),
-                const SizedBox(height: 12),
+
                 Row(
                   children: [
                     Expanded(
@@ -137,26 +139,26 @@ class _SeatReservationFormState extends State<SeatReservationForm> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolIdController,
-                  placeholder: const Text('School ID / Student ID'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Time to reserve: ${formatTimeOfDay(selectedTime)}',
+                      ),
+                    ),
+                    TextButton(onPressed: _pickTime, child: const Text('Pick')),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: cellphoneController,
-                  placeholder: const Text('Cellphone Number'),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: collegeController,
-                  placeholder: const Text('From College'),
-                ),
-                const SizedBox(height: 12),
-                ShadInput(
-                  controller: schoolOriginController,
-                  placeholder: const Text('From School'),
-                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      errorText!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 ShadButton(onPressed: _submit, child: const Text('Reserve')),
               ],

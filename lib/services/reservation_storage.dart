@@ -12,7 +12,7 @@ class ReservationStorage {
     if (Firebase.apps.isEmpty) {
       return null;
     }
-    return FirebaseFirestore.instance.collection('reservations');
+    return FirebaseFirestore.instance.collection('request list');
   }
 
   bool get isReady => _collection != null;

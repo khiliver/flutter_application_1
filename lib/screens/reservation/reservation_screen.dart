@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../constants.dart';
 import '../../models/reservation.dart';
+import '../../services/account_storage.dart';
 import '../../services/reservation_notification_helper.dart';
 import '../../services/reservation_storage.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/reservation_card.dart';
 import 'book_reservation_form.dart';
+import 'collection_reservation_form.dart';
 import 'discussion_room_reservation_form.dart';
 import 'edit_reservation_dialog.dart';
 import 'reservation_info_dialog.dart';
@@ -19,6 +21,8 @@ class ReservationsScreen extends StatefulWidget {
   final String? userName;
   final String? userEmail;
   final String? userType;
+  final VoidCallback? onProfilePressed;
+  final VoidCallback? onLogoPressed;
 
   const ReservationsScreen({
     super.key,
@@ -26,6 +30,8 @@ class ReservationsScreen extends StatefulWidget {
     this.userName,
     this.userEmail,
     this.userType,
+    this.onProfilePressed,
+    this.onLogoPressed,
   });
 
   @override
@@ -40,6 +46,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
 
   List<ReservationItem> _reservations = [];
   bool _isLoading = true;
+  Account? _currentAccount;
 
   String _normalizeRoleToken(String role) {
     return role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
@@ -62,7 +69,23 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentAccount();
     _loadReservations();
+  }
+
+  Future<void> _loadCurrentAccount() async {
+    final email = widget.userEmail?.trim();
+    if (email == null || email.isEmpty) return;
+
+    try {
+      final account = await AccountStorage.instance.findByEmail(email);
+      if (!mounted) return;
+      setState(() {
+        _currentAccount = account;
+      });
+    } catch (_) {
+      // Keep the existing fallback values if the account lookup fails.
+    }
   }
 
   Future<void> _loadReservations() async {
@@ -85,9 +108,9 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load requests: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not load requests: $e')));
     }
   }
 
@@ -95,13 +118,20 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     ReservationType type,
     String library,
   ) async {
+    final useDetailedRequestForm =
+        type == ReservationType.book ||
+        type == ReservationType.seat ||
+        type == ReservationType.discussionRoom ||
+        type == ReservationType.scannedCopy;
+
+    if (useDetailedRequestForm) {
+      return _showUserReservationForm(type, library);
+    }
+
     if (_isUser) {
       return _showUserReservationForm(type, library);
     }
 
-    if (type == ReservationType.scannedCopy) {
-      return _showManagerScannedCopyRequestInput(library);
-    }
     final title = await _showTitleInput(type);
     if (title?.isNotEmpty ?? false) {
       return ReservationItem(
@@ -111,6 +141,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
         requesterEmail: widget.userEmail ?? '',
         requesterName: widget.userName ?? '',
         library: library,
+        service: type.label,
       );
     }
 
@@ -129,6 +160,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             userEmail: widget.userEmail,
             userName: widget.userName,
             selectedLibrary: library,
+            userAccount: _currentAccount,
           ),
         );
       case ReservationType.scannedCopy:
@@ -138,6 +170,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             userEmail: widget.userEmail,
             userName: widget.userName,
             selectedLibrary: library,
+            userAccount: _currentAccount,
           ),
         );
       case ReservationType.seat:
@@ -147,6 +180,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             userEmail: widget.userEmail,
             userName: widget.userName,
             selectedLibrary: library,
+            userAccount: _currentAccount,
           ),
         );
       case ReservationType.discussionRoom:
@@ -156,120 +190,20 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             userEmail: widget.userEmail,
             userName: widget.userName,
             selectedLibrary: library,
+            userAccount: _currentAccount,
+          ),
+        );
+      case ReservationType.collection:
+        return showDialog<ReservationItem>(
+          context: context,
+          builder: (context) => CollectionReservationForm(
+            userEmail: widget.userEmail,
+            userName: widget.userName,
+            selectedLibrary: library,
+            userAccount: _currentAccount,
           ),
         );
     }
-  }
-
-  Future<ReservationItem?> _showManagerScannedCopyRequestInput(
-    String library,
-  ) async {
-    final titleController = TextEditingController();
-    final pageStartController = TextEditingController();
-    final pageEndController = TextEditingController();
-    String? errorMessage;
-
-    final result = await showDialog<ReservationItem>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          void onSave() {
-            final title = titleController.text.trim();
-            final pageStart = int.tryParse(pageStartController.text.trim());
-            final pageEnd = int.tryParse(pageEndController.text.trim());
-
-            if (title.isEmpty || pageStart == null || pageEnd == null) {
-              setDialogState(() {
-                errorMessage = 'Please enter title and valid page numbers.';
-              });
-              return;
-            }
-
-            if (pageStart <= 0 || pageEnd <= 0 || pageEnd < pageStart) {
-              setDialogState(() {
-                errorMessage =
-                    'Page range is invalid. Ensure start/end are positive and end is not before start.';
-              });
-              return;
-            }
-
-            final totalPages = pageEnd - pageStart + 1;
-            if (totalPages > 20) {
-              setDialogState(() {
-                errorMessage =
-                    'Scanned copy request is limited to 20 pages only.';
-              });
-              return;
-            }
-
-            Navigator.of(dialogContext).pop(
-              ReservationItem(
-                type: ReservationType.scannedCopy,
-                title: title,
-                createdAt: DateTime.now(),
-                requesterEmail: widget.userEmail ?? '',
-                requesterName: widget.userName ?? '',
-                library: library,
-                pageStart: pageStart,
-                pageEnd: pageEnd,
-              ),
-            );
-          }
-
-          return AlertDialog(
-            title: const Text('Request Scanned Copy'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(labelText: 'Book title'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pageStartController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Page start'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pageEndController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Page end'),
-                ),
-                const SizedBox(height: 12),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Maximum 20 pages per request.',
-                    style: TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-                ),
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    errorMessage!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(onPressed: onSave, child: const Text('Save')),
-            ],
-          );
-        },
-      ),
-    );
-
-    titleController.dispose();
-    pageStartController.dispose();
-    pageEndController.dispose();
-    return result;
   }
 
   Future<String?> _showTitleInput(ReservationType type) async {
@@ -432,6 +366,185 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     ).showSnackBar(SnackBar(content: Text('Updated "${updated.title}"')));
   }
 
+  Future<void> _acceptReservation(int index) async {
+    final messageController = TextEditingController();
+    DateTime? selectedStartTime;
+
+    final shouldAccept = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Accept Reservation'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: messageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Message (optional)',
+                    hintText: 'Add a message for the requester',
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Select 2-hour Timeslot:',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              selectedStartTime != null
+                                  ? 'Start: ${selectedStartTime!.hour.toString().padLeft(2, '0')}:${selectedStartTime!.minute.toString().padLeft(2, '0')}'
+                                  : 'Select start time',
+                            ),
+                          ),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.now(),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  selectedStartTime = DateTime(
+                                    _reservations[index]
+                                            .reservationDate
+                                            ?.year ??
+                                        DateTime.now().year,
+                                    _reservations[index]
+                                            .reservationDate
+                                            ?.month ??
+                                        DateTime.now().month,
+                                    _reservations[index].reservationDate?.day ??
+                                        DateTime.now().day,
+                                    picked.hour,
+                                    picked.minute,
+                                  );
+                                });
+                              }
+                            },
+                            child: const Text('Pick'),
+                          ),
+                        ],
+                      ),
+                      if (selectedStartTime != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'End: ${selectedStartTime!.add(const Duration(hours: 2)).hour.toString().padLeft(2, '0')}:${selectedStartTime!.add(const Duration(hours: 2)).minute.toString().padLeft(2, '0')}',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedStartTime != null
+                  ? () => Navigator.pop(context, true)
+                  : null,
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (shouldAccept == true && selectedStartTime != null) {
+      _reservations[index].status = ReservationStatus.accepted;
+      _reservations[index].adminMessage = messageController.text;
+      _reservations[index].startTime = selectedStartTime;
+      _reservations[index].endTime = selectedStartTime!.add(
+        const Duration(hours: 2),
+      );
+
+      await ReservationStorage.instance.updateReservation(_reservations[index]);
+
+      // Send approval notification
+      await ReservationNotificationHelper.notifyReservationApproved(
+        _reservations[index],
+        userEmail: _reservations[index].requesterEmail,
+      );
+
+      setState(() {});
+      messageController.dispose();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Accepted "${_reservations[index].title}"')),
+      );
+    }
+    messageController.dispose();
+  }
+
+  Future<void> _declineReservation(int index) async {
+    final messageController = TextEditingController();
+
+    final shouldDecline = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Decline Reservation'),
+        content: TextField(
+          controller: messageController,
+          decoration: const InputDecoration(
+            labelText: 'Reason (optional)',
+            hintText: 'Explain why you are declining',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Decline'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDecline == true) {
+      _reservations[index].status = ReservationStatus.declined;
+      _reservations[index].adminMessage = messageController.text;
+
+      await ReservationStorage.instance.updateReservation(_reservations[index]);
+      setState(() {});
+      messageController.dispose();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Declined "${_reservations[index].title}"')),
+      );
+    }
+    messageController.dispose();
+  }
+
   Future<void> _clearReservations() async {
     try {
       await ReservationStorage.instance.clearReservations();
@@ -448,6 +561,20 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
   }
 
   List<Widget> _buildActions(ReservationItem reservation, int index) {
+    if (_isManager && reservation.status == ReservationStatus.pending) {
+      return [
+        TextButton(
+          onPressed: () => _acceptReservation(index),
+          child: const Text('Accept', style: TextStyle(color: Colors.green)),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => _declineReservation(index),
+          child: const Text('Decline', style: TextStyle(color: Colors.red)),
+        ),
+      ];
+    }
+
     if (_isAdmin) {
       return [
         TextButton(
@@ -483,9 +610,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           else if (_reservations.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(
-                child: Text('No requests yet. Tap + to add one.'),
-              ),
+              child: Center(child: Text('No requests yet. Tap + to add one.')),
             )
           else
             SliverList(
@@ -508,8 +633,12 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                   child: ReservationCard(
                     title: reservation.title,
                     type: reservation.type,
+                    requesterName: reservation.requesterName,
                     status: reservation.status,
                     createdAt: reservation.createdAt,
+                    adminMessage: reservation.adminMessage,
+                    startTime: reservation.startTime,
+                    endTime: reservation.endTime,
                     actions: _buildActions(reservation, index),
                   ),
                 );
@@ -525,6 +654,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     return Scaffold(
       appBar: AppHeader(
         title: '',
+        onProfilePressed: widget.onProfilePressed,
+        onLogoPressed: widget.onLogoPressed,
         actions: _isManager
             ? [
                 IconButton(

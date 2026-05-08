@@ -11,6 +11,9 @@ class NotificationsScreen extends StatefulWidget {
   final String userEmail;
   final String? userType;
   final VoidCallback onGoToReservations;
+  final VoidCallback? onGoToAnnouncements;
+  final VoidCallback? onProfilePressed;
+  final VoidCallback? onLogoPressed;
 
   const NotificationsScreen({
     super.key,
@@ -18,6 +21,9 @@ class NotificationsScreen extends StatefulWidget {
     required this.userEmail,
     this.userType,
     required this.onGoToReservations,
+    this.onGoToAnnouncements,
+    this.onProfilePressed,
+    this.onLogoPressed,
   });
 
   @override
@@ -154,6 +160,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppHeader(
+        onProfilePressed: widget.onProfilePressed,
+        onLogoPressed: widget.onLogoPressed,
         actions: _isManager
             ? [
                 IconButton(
@@ -171,23 +179,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildManagerBody() {
-    return _buildRefreshableNotificationsBody(
-      onItemTap: widget.onGoToReservations,
-    );
+    return _buildRefreshableNotificationsBody(onItemTap: _onManagerItemTap);
   }
 
   Widget _buildUserBody() {
     return _buildRefreshableNotificationsBody();
   }
 
-  Widget _buildRefreshableNotificationsBody({VoidCallback? onItemTap}) {
+  void _onManagerItemTap(AppNotification notification) {
+    if (notification.type == AppNotificationType.reservation) {
+      widget.onGoToReservations();
+      return;
+    }
+
+    (widget.onGoToAnnouncements ?? widget.onGoToReservations).call();
+  }
+
+  Widget _buildRefreshableNotificationsBody({
+    ValueChanged<AppNotification>? onItemTap,
+  }) {
     return RefreshIndicator(
       onRefresh: _loadNotifications,
       child: _buildNotificationsList(onItemTap: onItemTap),
     );
   }
 
-  Widget _buildNotificationsList({VoidCallback? onItemTap}) {
+  Widget _buildNotificationsList({ValueChanged<AppNotification>? onItemTap}) {
     if (_isLoading) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -216,11 +233,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final tile = NotificationTile(
           title: item.title,
           subtitle: item.subtitle,
+          isRead: item.isRead,
+          onTap: () async {
+            if (!item.isRead && item.id != null) {
+              await NotificationStorage.instance.markAsRead(item.id!);
+              if (mounted) {
+                setState(() {
+                  _notifications[index] = AppNotification(
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    createdAt: item.createdAt,
+                    type: item.type,
+                    recipientEmail: item.recipientEmail,
+                    recipientRole: item.recipientRole,
+                    recipientUserType: item.recipientUserType,
+                    isRead: true,
+                    id: item.id,
+                  );
+                });
+              }
+            }
+            onItemTap?.call(item);
+          },
         );
-        if (onItemTap == null) {
-          return tile;
-        }
-        return InkWell(onTap: onItemTap, child: tile);
+        return tile;
       },
     );
   }

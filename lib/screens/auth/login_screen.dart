@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,26 +14,36 @@ class _SavedLoginProfile {
   final String email;
   final String password;
   final String name;
+  final String? avatarPath;
 
   const _SavedLoginProfile({
     required this.email,
     required this.password,
     required this.name,
+    this.avatarPath,
   });
 
   String get displayName => name.trim().isEmpty ? email : name;
+
+  String? get normalizedAvatarPath {
+    final value = avatarPath?.trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
 
   Map<String, dynamic> toJson() => {
     'email': email,
     'password': password,
     'name': name,
+    if (normalizedAvatarPath != null) 'avatarPath': normalizedAvatarPath,
   };
 
   factory _SavedLoginProfile.fromJson(Map<String, dynamic> json) {
+    final rawAvatarPath = json['avatarPath'];
     return _SavedLoginProfile(
       email: (json['email'] ?? '').toString(),
       password: (json['password'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
+      avatarPath: rawAvatarPath?.toString(),
     );
   }
 }
@@ -45,6 +56,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _kSavedLoginProfilesKey = 'saved_login_profiles_v2';
   static const _kSavedLoginEmailKey = 'saved_login_email_v1';
   static const _kSavedLoginPasswordKey = 'saved_login_password_v1';
   static const _kSavedLoginNameKey = 'saved_login_name_v1';
@@ -69,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _schoolIdController = TextEditingController();
   final _collegeController = TextEditingController();
   final _departmentController = TextEditingController();
+  final _employeeIdController = TextEditingController();
   final _addressController = TextEditingController();
   final _institutionOrSchoolController = TextEditingController();
   final _formKey = GlobalKey<ShadFormState>();
@@ -83,11 +96,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _canCreateSuperAdmin = false;
   bool _isSignIn = true;
   bool _obscurePassword = true;
-  String? _savedLoginEmail;
-  String? _savedLoginPassword;
-  String? _savedLoginName;
+  List<_SavedLoginProfile> _savedLoginProfiles = const [];
   bool _showManualSignIn = false;
   bool _isQuickLoginInProgress = false;
+  String? _quickLoginInProgressEmail;
 
   String get _normalizedSignUpGender {
     return _genderOptions.contains(_signUpGender)
@@ -111,47 +123,218 @@ class _LoginScreenState extends State<LoginScreen> {
     _refreshSuperAdminAvailability();
   }
 
+  ImageProvider<Object>? _resolveProfileImage(String? avatarPath) {
+    final normalizedPath = avatarPath?.trim() ?? '';
+    if (normalizedPath.isEmpty) {
+      return null;
+    }
+
+    if (normalizedPath.startsWith('http://') ||
+        normalizedPath.startsWith('https://')) {
+      return NetworkImage(normalizedPath);
+    }
+
+    if (normalizedPath.startsWith('assets/')) {
+      return AssetImage(normalizedPath);
+    }
+
+    final file = File(normalizedPath);
+    if (file.existsSync()) {
+      return FileImage(file);
+    }
+
+    return null;
+  }
+
+  bool _areSavedProfilesEqual(
+    List<_SavedLoginProfile> a,
+    List<_SavedLoginProfile> b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.email != right.email ||
+          left.password != right.password ||
+          left.name != right.name ||
+          left.normalizedAvatarPath != right.normalizedAvatarPath) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<List<_SavedLoginProfile>> _hydrateSavedProfiles(
+    List<_SavedLoginProfile> profiles,
+  ) async {
+    if (!AccountStorage.instance.isReady || profiles.isEmpty) {
+      return profiles;
+    }
+
+    final hydrated = <_SavedLoginProfile>[];
+    for (final profile in profiles) {
+      try {
+        final account = await AccountStorage.instance.findByEmail(
+          profile.email,
+        );
+        if (account == null) {
+          hydrated.add(profile);
+          continue;
+        }
+
+        hydrated.add(
+          _SavedLoginProfile(
+            email: profile.email,
+            password: profile.password,
+            name: account.name.trim().isEmpty
+                ? profile.name
+                : account.name.trim(),
+            avatarPath: (account.avatarPath?.trim().isNotEmpty ?? false)
+                ? account.avatarPath!.trim()
+                : profile.normalizedAvatarPath,
+          ),
+        );
+      } catch (_) {
+        hydrated.add(profile);
+      }
+    }
+
+    return hydrated;
+  }
+
+  List<_SavedLoginProfile> _decodeSavedProfiles(String rawJson) {
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is! List) return const [];
+
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) =>
+                _SavedLoginProfile.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .where(
+            (profile) =>
+                profile.email.trim().isNotEmpty &&
+                profile.password.trim().isNotEmpty,
+          )
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _persistSavedProfiles(List<_SavedLoginProfile> profiles) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (profiles.isEmpty) {
+      await prefs.remove(_kSavedLoginProfilesKey);
+      await prefs.remove(_kSavedLoginEmailKey);
+      await prefs.remove(_kSavedLoginPasswordKey);
+      await prefs.remove(_kSavedLoginNameKey);
+      return;
+    }
+
+    final encodedProfiles = jsonEncode(
+      profiles.map((profile) => profile.toJson()).toList(growable: false),
+    );
+    await prefs.setString(_kSavedLoginProfilesKey, encodedProfiles);
+
+    // Keep legacy keys aligned so previous app versions can still read the latest account.
+    final latestProfile = profiles.first;
+    await prefs.setString(_kSavedLoginEmailKey, latestProfile.email);
+    await prefs.setString(_kSavedLoginPasswordKey, latestProfile.password);
+    await prefs.setString(_kSavedLoginNameKey, latestProfile.name);
+  }
+
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString(_kSavedLoginEmailKey);
-    final savedPassword = prefs.getString(_kSavedLoginPasswordKey);
-    final savedName = prefs.getString(_kSavedLoginNameKey);
-    if (!mounted) return;
-    if (savedEmail != null && savedPassword != null) {
-      setState(() {
-        _savedLoginEmail = savedEmail;
-        _savedLoginPassword = savedPassword;
-        _savedLoginName = savedName;
-      });
+    final encodedProfiles = prefs.getString(_kSavedLoginProfilesKey);
+
+    List<_SavedLoginProfile> profiles = const [];
+    if (encodedProfiles != null && encodedProfiles.trim().isNotEmpty) {
+      profiles = _decodeSavedProfiles(encodedProfiles);
     }
+
+    if (profiles.isEmpty) {
+      final savedEmail = prefs.getString(_kSavedLoginEmailKey);
+      final savedPassword = prefs.getString(_kSavedLoginPasswordKey);
+      final savedName = prefs.getString(_kSavedLoginNameKey);
+      if ((savedEmail?.trim().isNotEmpty ?? false) &&
+          (savedPassword?.trim().isNotEmpty ?? false)) {
+        profiles = [
+          _SavedLoginProfile(
+            email: savedEmail!.trim(),
+            password: savedPassword!,
+            name: (savedName ?? '').trim(),
+          ),
+        ];
+        await _persistSavedProfiles(profiles);
+      }
+    }
+
+    final hydratedProfiles = await _hydrateSavedProfiles(profiles);
+    if (!_areSavedProfilesEqual(profiles, hydratedProfiles)) {
+      await _persistSavedProfiles(hydratedProfiles);
+    }
+    profiles = hydratedProfiles;
+
+    if (!mounted) return;
+    setState(() {
+      _savedLoginProfiles = profiles;
+    });
   }
 
   Future<void> _saveCredentials({
     required Account account,
     required String password,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kSavedLoginEmailKey, account.email);
-    await prefs.setString(_kSavedLoginPasswordKey, password);
-    await prefs.setString(_kSavedLoginNameKey, account.name);
+    final normalizedEmail = account.email.trim().toLowerCase();
+    final updatedProfiles = [
+      ..._savedLoginProfiles.where(
+        (profile) => profile.email.trim().toLowerCase() != normalizedEmail,
+      ),
+    ];
+
+    updatedProfiles.insert(
+      0,
+      _SavedLoginProfile(
+        email: account.email.trim(),
+        password: password,
+        name: account.name.trim(),
+        avatarPath: account.avatarPath?.trim(),
+      ),
+    );
+
+    final profilesToPersist = updatedProfiles.take(6).toList(growable: false);
+    await _persistSavedProfiles(profilesToPersist);
+
     if (!mounted) return;
     setState(() {
-      _savedLoginEmail = account.email;
-      _savedLoginPassword = password;
-      _savedLoginName = account.name;
+      _savedLoginProfiles = profilesToPersist;
+      _showManualSignIn = false;
     });
   }
 
-  Future<void> _clearSavedCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kSavedLoginEmailKey);
-    await prefs.remove(_kSavedLoginPasswordKey);
-    await prefs.remove(_kSavedLoginNameKey);
+  Future<void> _removeSavedCredentialsForEmail(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final remainingProfiles = _savedLoginProfiles
+        .where(
+          (profile) => profile.email.trim().toLowerCase() != normalizedEmail,
+        )
+        .toList(growable: false);
+
+    await _persistSavedProfiles(remainingProfiles);
+
     if (!mounted) return;
     setState(() {
-      _savedLoginEmail = null;
-      _savedLoginPassword = null;
-      _savedLoginName = null;
+      _savedLoginProfiles = remainingProfiles;
+      if (remainingProfiles.isEmpty) {
+        _showManualSignIn = true;
+      }
     });
   }
 
@@ -178,8 +361,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool get _hasSavedLogin {
-    return (_savedLoginEmail?.trim().isNotEmpty ?? false) &&
-        (_savedLoginPassword?.trim().isNotEmpty ?? false);
+    return _savedLoginProfiles.isNotEmpty;
+  }
+
+  bool _isCredentialAlreadySaved(String email, String password) {
+    final normalizedEmail = email.trim().toLowerCase();
+    return _savedLoginProfiles.any(
+      (profile) =>
+          profile.email.trim().toLowerCase() == normalizedEmail &&
+          profile.password == password,
+    );
   }
 
   Future<void> _goToMain(Account account) async {
@@ -199,9 +390,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _continueWithSavedProfile() async {
-    final savedEmail = _savedLoginEmail?.trim() ?? '';
-    final savedPassword = _savedLoginPassword ?? '';
+  Future<void> _continueWithSavedProfile(_SavedLoginProfile profile) async {
+    final savedEmail = profile.email.trim();
+    final savedPassword = profile.password;
+    final normalizedSavedEmail = savedEmail.toLowerCase();
     if (savedEmail.isEmpty || savedPassword.isEmpty) return;
 
     if (!AccountStorage.instance.isReady) {
@@ -218,34 +410,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       _isQuickLoginInProgress = true;
+      _quickLoginInProgressEmail = normalizedSavedEmail;
     });
 
     try {
-      final authenticated = await AccountStorage.instance.authenticate(
+      final account = await _continueWithLegacySavedProfile(
         savedEmail,
         savedPassword,
       );
-      if (!authenticated) {
-        await _clearSavedCredentials();
-        if (!mounted) return;
-        setState(() {
-          _showManualSignIn = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved login expired. Please sign in.')),
-        );
-        return;
-      }
-
-      final account = await AccountStorage.instance.findByEmail(savedEmail);
       if (account == null) {
-        await _clearSavedCredentials();
+        await _removeSavedCredentialsForEmail(savedEmail);
         if (!mounted) return;
         setState(() {
           _showManualSignIn = true;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved account not found. Please sign in.')),
+          const SnackBar(
+            content: Text('Saved account not found. Please sign in.'),
+          ),
         );
         return;
       }
@@ -255,12 +437,38 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() {
           _isQuickLoginInProgress = false;
+          _quickLoginInProgressEmail = null;
         });
       }
     }
   }
 
+  Future<Account?> _continueWithLegacySavedProfile(
+    String savedEmail,
+    String savedPassword,
+  ) async {
+    final authenticated = await AccountStorage.instance.authenticate(
+      savedEmail,
+      savedPassword,
+    );
+    if (!authenticated) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved login expired. Please sign in.')),
+        );
+      }
+      return null;
+    }
+
+    return AccountStorage.instance.findByEmail(savedEmail);
+  }
+
   Future<void> _refreshSuperAdminAvailability() async {
+    // Only check if Firebase is initialized
+    if (!AccountStorage.instance.isReady) {
+      return;
+    }
+
     final canCreate = await AccountStorage.instance.canCreateSuperAdmin();
     if (!mounted) return;
     setState(() {
@@ -316,6 +524,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _schoolIdController.clear();
     _collegeController.clear();
     _departmentController.clear();
+    _employeeIdController.clear();
     _addressController.clear();
     _institutionOrSchoolController.clear();
     _signUpCategory = 'Student';
@@ -349,11 +558,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       if (_isSignIn) {
-        final authenticated = await AccountStorage.instance.authenticate(
-          email,
-          password,
-        );
-        if (!authenticated) {
+        final account = await _continueWithLegacySavedProfile(email, password);
+        if (account == null) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Invalid email or password')),
@@ -361,20 +567,16 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        final account = await AccountStorage.instance.findByEmail(email);
-        if (account == null) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Account not found')));
-          return;
-        }
-
-        final shouldSavePassword = await _promptSavePassword();
-        if (shouldSavePassword) {
+        final alreadySaved = _isCredentialAlreadySaved(email, password);
+        if (alreadySaved) {
           await _saveCredentials(account: account, password: password);
         } else {
-          await _clearSavedCredentials();
+          final shouldSavePassword = await _promptSavePassword();
+          if (shouldSavePassword) {
+            await _saveCredentials(account: account, password: password);
+          } else {
+            await _removeSavedCredentialsForEmail(email);
+          }
         }
 
         await _goToMain(account);
@@ -446,6 +648,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     _signUpCategory.toLowerCase() == 'personel')
             ? _departmentController.text.trim()
             : null,
+        employeeId:
+            _signUpRole.toLowerCase() == 'user' &&
+                _signUpCategory.toLowerCase() == 'personel'
+            ? _employeeIdController.text.trim()
+            : null,
         personelType:
             _signUpRole.toLowerCase() == 'user' &&
                 _signUpCategory.toLowerCase() == 'personel'
@@ -472,7 +679,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!wasAdded) {
         await _showResultDialog(
           title: 'Registration failed',
-          message: 'Could not create account. Please try again.',
+          message: 'Could not create the account. Please try again.',
         );
         return;
       }
@@ -494,15 +701,19 @@ class _LoginScreenState extends State<LoginScreen> {
         subtitle:
             '${account.name} (${account.role}${account.userType != null ? ' - ${account.userType}' : ''})',
         createdAt: DateTime.now(),
+        type: AppNotificationType.account,
       ),
     );
 
-    await _showResultDialog(
-      title: 'Registration successful',
-      message: 'Account created for ${account.email}. You can now sign in.',
-    );
+    // Show success message and return to sign in
+    if (mounted) {
+      await _showResultDialog(
+        title: 'Registration successful',
+        message: 'Account created successfully! You can now sign in.',
+      );
+    }
 
-    if (!mounted) return;
+    // Clear fields and go back to sign in
     _passwordController.clear();
     _firstNameController.clear();
     _middleNameController.clear();
@@ -520,9 +731,11 @@ class _LoginScreenState extends State<LoginScreen> {
     _signUpNonBuType = 'Student';
     _signUpPersonelType = 'Faculty';
     _obscurePassword = true;
-    setState(() {
-      _isSignIn = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isSignIn = true;
+      });
+    }
   }
 
   Future<void> _goToForgotPassword() async {
@@ -573,231 +786,488 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isSignIn && _hasSavedLogin && !_showManualSignIn) {
-      final displayName = (_savedLoginName?.trim().isNotEmpty ?? false)
-          ? _savedLoginName!
-          : _savedLoginEmail!;
       return Scaffold(
         backgroundColor: const Color(0xFFF0F2F5),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                child: SizedBox(
-                  height: constraints.maxHeight - 36,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: _isQuickLoginInProgress
-                                  ? null
-                                  : _continueWithSavedProfile,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 10,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: SizedBox(
+                          height: constraints.maxHeight - 36,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFDFDFD),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: const Color(0xFFDCE2EA),
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x12000000),
+                                  blurRadius: 20,
+                                  offset: Offset(0, 10),
                                 ),
-                                child: Row(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(999),
+                              ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                18,
+                                20,
+                                18,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      height: 190,
+                                      color: Colors.transparent,
+                                      alignment: Alignment.center,
                                       child: Image.asset(
                                         'assets/AskRisaavatarwelcomeback.png',
-                                        width: 62,
-                                        height: 62,
-                                        fit: BoxFit.cover,
+                                        fit: BoxFit.scaleDown,
+                                        filterQuality: FilterQuality.high,
                                         errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const SizedBox(
-                                                  width: 62,
-                                                  height: 62,
-                                                  child: Icon(
-                                                    Icons.support_agent,
-                                                    size: 36,
-                                                    color: Color(0xFF2D73E0),
-                                                  ),
-                                                ),
+                                            (context, error, stackTrace) {
+                                              return const Icon(
+                                                Icons.support_agent,
+                                                size: 72,
+                                                color: Color(0xFF1E40AF),
+                                              );
+                                            },
                                       ),
                                     ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        displayName,
-                                        style: const TextStyle(
-                                          fontSize: 31,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.black87,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'Welcome back',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'Select an account with saved password.',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Color(0xFF475467),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      itemCount: _savedLoginProfiles.length,
+                                      separatorBuilder: (context, index) =>
+                                          const SizedBox(height: 10),
+                                      itemBuilder: (context, index) {
+                                        final profile =
+                                            _savedLoginProfiles[index];
+                                        final normalizedEmail = profile.email
+                                            .trim()
+                                            .toLowerCase();
+                                        final isCurrentProfile =
+                                            _isQuickLoginInProgress &&
+                                            normalizedEmail ==
+                                                _quickLoginInProgressEmail;
+                                        final initialSource =
+                                            profile.displayName.trim().isEmpty
+                                            ? profile.email.trim()
+                                            : profile.displayName.trim();
+                                        final initial = initialSource.isEmpty
+                                            ? '?'
+                                            : initialSource
+                                                  .substring(0, 1)
+                                                  .toUpperCase();
+                                        final profileImage =
+                                            _resolveProfileImage(
+                                              profile.normalizedAvatarPath,
+                                            );
+
+                                        return Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            onTap: _isQuickLoginInProgress
+                                                ? null
+                                                : () =>
+                                                      _continueWithSavedProfile(
+                                                        profile,
+                                                      ),
+                                            child: Ink(
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF8FAFC),
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                                border: Border.all(
+                                                  color: isCurrentProfile
+                                                      ? const Color(0xFF2D73E0)
+                                                      : const Color(0xFFD0D5DD),
+                                                  width: isCurrentProfile
+                                                      ? 1.4
+                                                      : 1,
+                                                ),
+                                              ),
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 10,
+                                                    ),
+                                                child: Row(
+                                                  children: [
+                                                    CircleAvatar(
+                                                      radius: 23,
+                                                      backgroundColor:
+                                                          profileImage != null
+                                                          ? Colors.transparent
+                                                          : const Color(
+                                                              0xFFE3EDFF,
+                                                            ),
+                                                      foregroundColor:
+                                                          const Color(
+                                                            0xFF1E40AF,
+                                                          ),
+                                                      foregroundImage:
+                                                          profileImage,
+                                                      child: Text(
+                                                        initial,
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Text(
+                                                            profile.displayName,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 16,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  color: Color(
+                                                                    0xFF111827,
+                                                                  ),
+                                                                ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 2,
+                                                          ),
+                                                          Text(
+                                                            profile.email,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 13,
+                                                                  color: Color(
+                                                                    0xFF6B7280,
+                                                                  ),
+                                                                ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    if (isCurrentProfile)
+                                                      const SizedBox(
+                                                        width: 22,
+                                                        height: 22,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 2.2,
+                                                            ),
+                                                      )
+                                                    else ...[
+                                                      IconButton(
+                                                        tooltip:
+                                                            'Remove saved account',
+                                                        onPressed:
+                                                            _isQuickLoginInProgress
+                                                            ? null
+                                                            : () =>
+                                                                  _removeSavedCredentialsForEmail(
+                                                                    profile
+                                                                        .email,
+                                                                  ),
+                                                        icon: const Icon(
+                                                          Icons
+                                                              .remove_circle_outline_rounded,
+                                                          size: 22,
+                                                          color: Color(
+                                                            0xFF6B7280,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const Icon(
+                                                        Icons
+                                                            .chevron_right_rounded,
+                                                        color: Color(
+                                                          0xFF4B5563,
+                                                        ),
+                                                        size: 30,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFF8FAFD),
+                                      side: const BorderSide(
+                                        color: Color(0xFFD0D5DD),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          999,
                                         ),
                                       ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
                                     ),
-                                    _isQuickLoginInProgress
-                                        ? const SizedBox(
-                                            width: 22,
-                                            height: 22,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.2,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.chevron_right_rounded,
-                                            color: Color(0xFF4B5563),
-                                            size: 30,
-                                          ),
-                                  ],
-                                ),
+                                    onPressed: _isQuickLoginInProgress
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _showManualSignIn = true;
+                                            });
+                                          },
+                                    icon: const Icon(
+                                      Icons.person_outline_rounded,
+                                      color: Color(0xFF1F2937),
+                                    ),
+                                    label: const Text(
+                                      'Use another profile',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          const Spacer(),
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: const Color(0xFFF0F2F5),
-                              side: const BorderSide(color: Color(0xFFD0D5DD)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onPressed: _isQuickLoginInProgress
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _showManualSignIn = true;
-                                    });
-                                  },
-                            child: const Text(
-                              'Use another profile',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: Opacity(
+                opacity: 0.4,
+                child: Text(
+                  'Developed by Leenard A. Asejo',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight - 24,
-                ),
-                child: AuthFormCard(
-                  formKey: _formKey,
-                  isSignIn: _isSignIn,
-                  obscurePassword: _obscurePassword,
-                  canCreateSuperAdmin: _canCreateSuperAdmin,
-                  signUpCategory: _signUpCategory,
-                  signUpNonBuType: _signUpNonBuType,
-                  signUpPersonelType: _signUpPersonelType,
-                  signUpRole: _signUpRole,
-                  signUpGender: _normalizedSignUpGender,
-                  signUpAvatarPath: _signUpAvatarPath,
-                  emailController: _emailController,
-                  passwordController: _passwordController,
-                  firstNameController: _firstNameController,
-                  middleNameController: _middleNameController,
-                  lastNameController: _lastNameController,
-                  contactNumberController: _contactNumberController,
-                  birthdateController: _birthdateController,
-                  courseController: _courseController,
-                  collegeController: _collegeController,
-                  departmentController: _departmentController,
-                  schoolIdController: _schoolIdController,
-                  addressController: _addressController,
-                  institutionOrSchoolController: _institutionOrSchoolController,
-                  onForgotPassword: _goToForgotPassword,
-                  onToggleObscurePassword: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
-                  onPickAvatar: _pickSignUpAvatar,
-                  onModeChanged: (index) {
-                    _resetSignUpFields();
-                    setState(() {
-                      _isSignIn = index == 0;
-                    });
-                    if (index == 1) {
-                      _refreshSuperAdminAvailability();
-                    }
-                  },
-                  onRoleChanged: (value) {
-                    setState(() {
-                      _signUpRole = value;
-                      if (_signUpRole.toLowerCase() != 'user') {
-                        _signUpCategory = 'Student';
-                        _signUpNonBuType = 'Student';
-                        _signUpPersonelType = 'Faculty';
-                        _courseController.clear();
-                        _schoolIdController.clear();
-                        _collegeController.clear();
-                        _departmentController.clear();
-                        _addressController.clear();
-                        _institutionOrSchoolController.clear();
-                      }
-                    });
-                  },
-                  onCategoryChanged: (value) {
-                    setState(() {
-                      _signUpCategory = value;
-                      if (_signUpCategory.toLowerCase() != 'student') {
-                        _courseController.clear();
-                        _schoolIdController.clear();
-                      }
-                      if (_signUpCategory.toLowerCase() != 'personel') {
-                        _signUpPersonelType = 'Faculty';
-                        _collegeController.clear();
-                        _departmentController.clear();
-                      }
-                      if (_signUpCategory.toLowerCase() != 'non-bu') {
-                        _signUpNonBuType = 'Student';
-                        _addressController.clear();
-                        _institutionOrSchoolController.clear();
-                      }
-                    });
-                  },
-                  onNonBuTypeChanged: (value) {
-                    setState(() {
-                      _signUpNonBuType = value;
-                    });
-                  },
-                  onPersonelTypeChanged: (value) {
-                    setState(() {
-                      _signUpPersonelType = value;
-                    });
-                  },
-                  onGenderChanged: (value) {
-                    setState(() {
-                      _signUpGender = value;
-                    });
-                  },
-                  onSubmit: _attemptLogin,
+    return PopScope(
+      canPop: !(_isSignIn && _showManualSignIn && _hasSavedLogin),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _isSignIn && _showManualSignIn && _hasSavedLogin) {
+          setState(() {
+            _showManualSignIn = false;
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF0F2F5),
+        body: Stack(
+          children: [
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 24,
+                      ),
+                      child: AuthFormCard(
+                        formKey: _formKey,
+                        isSignIn: _isSignIn,
+                        obscurePassword: _obscurePassword,
+                        canCreateSuperAdmin: _canCreateSuperAdmin,
+                        signUpCategory: _signUpCategory,
+                        signUpNonBuType: _signUpNonBuType,
+                        signUpPersonelType: _signUpPersonelType,
+                        signUpRole: _signUpRole,
+                        signUpGender: _normalizedSignUpGender,
+                        signUpAvatarPath: _signUpAvatarPath,
+                        emailController: _emailController,
+                        passwordController: _passwordController,
+                        firstNameController: _firstNameController,
+                        middleNameController: _middleNameController,
+                        lastNameController: _lastNameController,
+                        contactNumberController: _contactNumberController,
+                        birthdateController: _birthdateController,
+                        courseController: _courseController,
+                        collegeController: _collegeController,
+                        departmentController: _departmentController,
+                        schoolIdController: _schoolIdController,
+                        employeeIdController: _employeeIdController,
+                        addressController: _addressController,
+                        institutionOrSchoolController:
+                            _institutionOrSchoolController,
+                        onForgotPassword: _goToForgotPassword,
+                        onBackPressed: () {
+                          if (_isSignIn &&
+                              _showManualSignIn &&
+                              _hasSavedLogin) {
+                            setState(() {
+                              _showManualSignIn = false;
+                            });
+                            return;
+                          }
+
+                          if (!_isSignIn) {
+                            _resetSignUpFields();
+                            setState(() {
+                              _isSignIn = true;
+                            });
+                            return;
+                          }
+
+                          Navigator.of(context).maybePop();
+                        },
+                        onToggleObscurePassword: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                        onPickAvatar: _pickSignUpAvatar,
+                        onModeChanged: (index) {
+                          _resetSignUpFields();
+                          setState(() {
+                            _isSignIn = index == 0;
+                          });
+                          if (index == 1) {
+                            _refreshSuperAdminAvailability();
+                          }
+                        },
+                        onRoleChanged: (value) {
+                          setState(() {
+                            _signUpRole = value;
+                            if (_signUpRole.toLowerCase() != 'user') {
+                              _signUpCategory = 'Student';
+                              _signUpNonBuType = 'Student';
+                              _signUpPersonelType = 'Faculty';
+                              _courseController.clear();
+                              _schoolIdController.clear();
+                              _collegeController.clear();
+                              _departmentController.clear();
+                              _addressController.clear();
+                              _institutionOrSchoolController.clear();
+                            }
+                          });
+                        },
+                        onCategoryChanged: (value) {
+                          setState(() {
+                            _signUpCategory = value;
+                            if (_signUpCategory.toLowerCase() != 'student') {
+                              _courseController.clear();
+                              _schoolIdController.clear();
+                            }
+                            if (_signUpCategory.toLowerCase() != 'personel') {
+                              _signUpPersonelType = 'Faculty';
+                              _collegeController.clear();
+                              _departmentController.clear();
+                            }
+                            if (_signUpCategory.toLowerCase() != 'non-bu') {
+                              _signUpNonBuType = 'Student';
+                              _addressController.clear();
+                              _institutionOrSchoolController.clear();
+                            }
+                          });
+                        },
+                        onNonBuTypeChanged: (value) {
+                          setState(() {
+                            _signUpNonBuType = value;
+                          });
+                        },
+                        onPersonelTypeChanged: (value) {
+                          setState(() {
+                            _signUpPersonelType = value;
+                          });
+                        },
+                        onGenderChanged: (value) {
+                          setState(() {
+                            _signUpGender = value;
+                          });
+                        },
+                        onSubmit: _attemptLogin,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: Opacity(
+                opacity: 0.4,
+                child: Text(
+                  'Developed by Leenard A. Asejo',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );

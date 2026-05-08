@@ -81,6 +81,8 @@ class MainScreen extends StatefulWidget {
   final String? initialRole;
   final String? initialUserType;
   final String? initialAvatarPath;
+  final int? initialIndex;
+  final bool showTimelinePreview;
 
   const MainScreen({
     super.key,
@@ -89,6 +91,8 @@ class MainScreen extends StatefulWidget {
     this.initialRole,
     this.initialUserType,
     this.initialAvatarPath,
+    this.initialIndex,
+    this.showTimelinePreview = false,
   });
 
   @override
@@ -96,8 +100,28 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
   late final List<Widget> _tabs;
+
+  void _openTimeline() {
+    _onTap(0);
+  }
+
+  void _openManagerTimeline() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MainScreen(
+          initialEmail: widget.initialEmail,
+          initialName: widget.initialName,
+          initialRole: widget.initialRole,
+          initialUserType: widget.initialUserType,
+          initialAvatarPath: widget.initialAvatarPath,
+          initialIndex: 0,
+          showTimelinePreview: true,
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -108,24 +132,46 @@ class _MainScreenState extends State<MainScreen> {
         normalizedRole == 'librarian' ||
         normalizedRole == 'over all admin' ||
         normalizedRole == 'super admin';
+    _currentIndex = widget.initialIndex ?? 0;
 
     _tabs = [
-      if (isManager)
-        DashboardScreen(role: widget.initialRole ?? 'Librarian')
+      if (isManager && !widget.showTimelinePreview)
+        DashboardScreen(
+          role: widget.initialRole ?? 'Librarian',
+          currentEmail: widget.initialEmail,
+          currentName: widget.initialName,
+          onLogoPressed: _openManagerTimeline,
+          onProfilePressed: () => _onTap(4),
+        )
       else
-        const HomeScreen(),
-      const ChatbotScreen(),
+        HomeScreen(
+          userEmail: widget.initialEmail,
+          userName: widget.initialName,
+          userRole: widget.initialRole,
+          onProfilePressed: () => _onTap(4),
+          onLogoPressed: _openTimeline,
+        ),
+      ChatbotScreen(onProfilePressed: () => _onTap(4)),
       NotificationsScreen(
         userRole: widget.initialRole ?? '',
         userEmail: widget.initialEmail ?? '',
         userType: widget.initialUserType,
+        onLogoPressed: _openTimeline,
         onGoToReservations: () => _onTap(3),
+        onGoToAnnouncements: isManager
+            ? (widget.showTimelinePreview
+                  ? _openTimeline
+                  : _openManagerTimeline)
+            : _openTimeline,
+        onProfilePressed: () => _onTap(4),
       ),
       ReservationsScreen(
         userRole: widget.initialRole ?? '',
         userName: widget.initialName,
         userEmail: widget.initialEmail,
         userType: widget.initialUserType,
+        onLogoPressed: _openTimeline,
+        onProfilePressed: () => _onTap(4),
       ),
       ProfileScreen(
         initialEmail: widget.initialEmail,
@@ -138,6 +184,11 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onTap(int index) {
+    if (widget.showTimelinePreview && index == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+
     setState(() {
       _currentIndex = index;
     });
@@ -148,7 +199,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _tabs),
       bottomNavigationBar: BottomNavbar(
-        currentIndex: _currentIndex,
+        currentIndex: _currentIndex < 4 ? _currentIndex : 0,
         onTap: _onTap,
       ),
     );

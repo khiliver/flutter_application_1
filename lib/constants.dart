@@ -11,6 +11,22 @@ String get kFacebookMessengerUrl => 'https://m.me/$kFacebookPageHandle';
 String get kFacebookPageUrl => 'https://www.facebook.com/$kFacebookPageHandle';
 const String kUniversityLibraryFacebookUrl =
     'https://www.facebook.com/aklatangunibersidad.bicol';
+const String kBuceailsChildrenLibraryFacebookUrl =
+    'https://www.facebook.com/buceilslibrary';
+const String kCollegeOfLawFacebookUrl =
+    'https://www.facebook.com/profile.php?id=100085088296064';
+const String kHealthScienceLibraryFacebookUrl =
+    'https://www.facebook.com/cncmlib';
+const String kTabacoCampusLibraryFacebookUrl =
+    'https://www.facebook.com/profile.php?id=61584405076499';
+const String kGuinoatanCampusLibraryFacebookUrl =
+    'https://www.facebook.com/profile.php?id=100025590900869';
+const String kPolanguiCampusLibraryFacebookUrl =
+    'https://www.facebook.com/BUPCLibrary';
+const String kGubatCampusLibraryFacebookUrl =
+    'https://www.facebook.com/bugclibrary';
+const String kEastCampusLibraryFacebookUrl =
+    'https://www.facebook.com/$kFacebookPageHandle';
 
 const List<String> kLibraryOptions = [
   'BUCEILS Children and High School Library',
@@ -22,6 +38,4 @@ const List<String> kLibraryOptions = [
   'Guinobatan Campus',
   'Polangui Campus',
   'Gubat Campus',
-  'Subscribed Database',
-  'Perpectual ebook collection',
 ];

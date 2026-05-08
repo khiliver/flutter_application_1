@@ -12,9 +12,11 @@ class ReservationTypePickerDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: ReservationType.values.map((type) {
-          final actionLabel = type == ReservationType.scannedCopy
-              ? 'Request Scan'
-              : 'Reserve ${type.label}';
+          final actionLabel = switch (type) {
+            ReservationType.scannedCopy => 'Request Scan',
+            ReservationType.collection => 'Request List of Collection',
+            _ => 'Reserve ${type.label}',
+          };
           return ListTile(
             leading: Icon(type.icon),
             title: Text(actionLabel),

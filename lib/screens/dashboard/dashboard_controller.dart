@@ -6,13 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../../constants.dart';
 import '../../models/reservation.dart';
 import '../../services/account_storage.dart';
+import '../../services/analytics_storage.dart';
 import '../../services/announcement_storage.dart';
 import '../../services/notification_storage.dart';
+import '../../services/reservation_notification_helper.dart';
 import '../../services/reservation_storage.dart';
 
 class _AccountEditResult {
@@ -23,9 +26,15 @@ class _AccountEditResult {
 }
 
 class DashboardController extends ChangeNotifier {
-  DashboardController({required this.role});
+  DashboardController({
+    required this.role,
+    required this.creatorEmail,
+    required this.creatorName,
+  });
 
   final String role;
+  final String? creatorEmail;
+  final String? creatorName;
 
   late Future<List<Account>> accountsFuture;
   late Future<List<ReservationItem>> reservationsFuture;
@@ -386,17 +395,37 @@ class DashboardController extends ChangeNotifier {
         savedPath = location.path;
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final fallbackFile = File(
-          '${directory.path}${Platform.pathSeparator}$fileName.xlsx',
+        final exportDir = Directory(
+          '${directory.path}${Platform.pathSeparator}analytics_exports',
         );
-        await fallbackFile.writeAsBytes(bytes, flush: true);
-        savedPath = fallbackFile.path;
+        if (!await exportDir.exists()) {
+          await exportDir.create(recursive: true);
+        }
+
+        final file = File(
+          '${exportDir.path}${Platform.pathSeparator}$fileName.xlsx',
+        );
+        await file.writeAsBytes(bytes, flush: true);
+        savedPath = file.path;
       }
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Analytics exported to $savedPath')),
+        SnackBar(
+          content: Text('Analytics exported to $savedPath'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () async {
+              if (savedPath != null && savedPath.isNotEmpty) {
+                await OpenFile.open(savedPath);
+              }
+            },
+          ),
+        ),
       );
+
+      // Save analytics snapshot to local storage
+      await _saveAnalyticsSnapshot(filteredReservations, weekDates, fileName);
     } on MissingPluginException {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -412,6 +441,106 @@ class DashboardController extends ChangeNotifier {
         SnackBar(content: Text('Failed to export Excel file: $e')),
       );
     }
+  }
+
+  Future<void> _saveAnalyticsSnapshot(
+    List<ReservationItem> filteredReservations,
+    List<DateTime> weekDates,
+    String fileName,
+  ) async {
+    try {
+      final types = ReservationType.values.toList();
+
+      // Build summary data
+      final summaryData = <String, dynamic>{};
+
+      bool sameDay(DateTime a, DateTime b) {
+        return a.year == b.year && a.month == b.month && a.day == b.day;
+      }
+
+      for (var row = 0; row < weekDates.length; row++) {
+        final day = weekDates[row];
+        final dateKey =
+            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        final typeCount = <String, int>{};
+
+        for (var col = 0; col < types.length; col++) {
+          final type = types[col];
+          final count = filteredReservations.where((reservation) {
+            final activityDate =
+                reservation.reservationDate ?? reservation.createdAt;
+            return reservation.type == type && sameDay(activityDate, day);
+          }).length;
+          typeCount[type.label] = count;
+        }
+
+        summaryData[dateKey] = typeCount;
+      }
+
+      // Build reservation details
+      final reservationDetails = filteredReservations.map((reservation) {
+        final reservationDate = reservation.reservationDate;
+        final reservationDateText = reservationDate == null
+            ? ''
+            : '${reservationDate.year}-${reservationDate.month.toString().padLeft(2, '0')}-${reservationDate.day.toString().padLeft(2, '0')}';
+        final createdAt = reservation.createdAt;
+        final createdAtText =
+            '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+
+        return {
+          'type': reservation.type.label,
+          'status': reservation.status.label,
+          'requesterName': reservation.requesterName,
+          'requesterEmail': reservation.requesterEmail,
+          'reservationDate': reservationDateText,
+          'createdAt': createdAtText,
+          'college': collegeFor(reservation),
+          'schoolOrigin': reservation.schoolOrigin.trim(),
+        };
+      }).toList();
+
+      // Create snapshot
+      final snapshot = AnalyticsSnapshot(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        createdAt: DateTime.now(),
+        snapshotDate: selectedGraphDate,
+        collegeFilter: selectedCollegeFilter,
+        summaryData: summaryData,
+        reservationDetails: reservationDetails,
+      );
+
+      // Save to local storage
+      await AnalyticsStorage.instance.saveAnalyticsSnapshot(snapshot);
+    } catch (e) {
+      // Silently fail to avoid disrupting the export process
+      debugPrint('Failed to save analytics snapshot: $e');
+    }
+  }
+
+  Future<List<AnalyticsSnapshot>> getStoredAnalyticsSnapshots() async {
+    return AnalyticsStorage.instance.getAllSnapshots();
+  }
+
+  Future<void> deleteAnalyticsSnapshot(String snapshotId) async {
+    await AnalyticsStorage.instance.deleteSnapshot(snapshotId);
+    notifyListeners();
+  }
+
+  Future<void> clearAllAnalytics() async {
+    await AnalyticsStorage.instance.deleteAllSnapshots();
+    notifyListeners();
+  }
+
+  Future<void> deleteOldAnalytics(int daysOld) async {
+    final cutoffDate = DateTime.now().subtract(Duration(days: daysOld));
+    await AnalyticsStorage.instance.deleteSnapshotsOlderThan(cutoffDate);
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> getAnalyticsStorageInfo() async {
+    final metadata = await AnalyticsStorage.instance.getMetadata();
+    final usage = await AnalyticsStorage.instance.getStorageUsage();
+    return {...metadata, 'storageUsageBytes': usage};
   }
 
   Future<void> postAnnouncement(BuildContext context) async {
@@ -431,32 +560,65 @@ class DashboardController extends ChangeNotifier {
     isPostingAnnouncement = true;
     notifyListeners();
 
+    String? persistedImagePath;
+    if (selectedMedia != null) {
+      final directory = await getApplicationDocumentsDirectory();
+      final announcementDir = Directory(
+        '${directory.path}${Platform.pathSeparator}announcements',
+      );
+      if (!await announcementDir.exists()) {
+        await announcementDir.create(recursive: true);
+      }
+
+      final sourceFile = selectedMedia!;
+      final extension = sourceFile.path.split('.').last;
+      final safeExtension = extension.length <= 5 ? extension : 'jpg';
+      final fileName =
+          'announcement_${DateTime.now().millisecondsSinceEpoch}.$safeExtension';
+      final savedFile = await sourceFile.copy(
+        '${announcementDir.path}${Platform.pathSeparator}$fileName',
+      );
+      persistedImagePath = savedFile.path;
+    }
+
     await AnnouncementStorage.instance.addAnnouncement(
       Announcement(
         title: '',
         body: body,
         createdAt: DateTime.now(),
-        imagePath: selectedMedia?.path,
+        imagePath: persistedImagePath,
         emoji: selectedFeeling,
+        postedByEmail: creatorEmail,
+        postedByName: creatorName,
+        postedByRole: role,
       ),
     );
 
+    final notificationTitle = body.isNotEmpty
+        ? (body.length > 60 ? '${body.substring(0, 60)}…' : body)
+        : 'Announcement preview';
     final notificationSubtitle = body.isNotEmpty
         ? body
+        : hasMedia
+        ? 'A photo announcement was posted.'
         : 'A new announcement was posted.';
     for (final userType in ['Student', 'Personel', 'Visitor']) {
       await NotificationStorage.instance.addAudienceNotification(
-        title: 'New announcement',
+        title: notificationTitle,
         subtitle: notificationSubtitle,
         recipientRole: 'User',
         recipientUserType: userType,
+        notificationType: AppNotificationType.announcement,
       );
     }
-    await NotificationStorage.instance.addAudienceNotification(
-      title: 'New announcement',
-      subtitle: notificationSubtitle,
-      recipientRole: 'Over All Admin',
-    );
+    for (final role in ['Admin', 'Librarian', 'Over All Admin']) {
+      await NotificationStorage.instance.addAudienceNotification(
+        title: notificationTitle,
+        subtitle: notificationSubtitle,
+        recipientRole: role,
+        notificationType: AppNotificationType.announcement,
+      );
+    }
 
     if (!context.mounted) {
       return;
@@ -567,7 +729,8 @@ class DashboardController extends ChangeNotifier {
     String? selectedLibrary = assignableLibraries.contains(account.unit)
         ? account.unit
         : null;
-    if (selectedRole.toLowerCase() == 'librarian' &&
+    if ((selectedRole.toLowerCase() == 'librarian' ||
+            selectedRole.toLowerCase() == 'admin') &&
         selectedLibrary == null &&
         assignableLibraries.isNotEmpty) {
       selectedLibrary = assignableLibraries.first;
@@ -581,7 +744,8 @@ class DashboardController extends ChangeNotifier {
             final normalizedRole = selectedRole.toLowerCase();
             final requiresUnit =
                 normalizedRole == 'admin' || normalizedRole == 'librarian';
-            final requiresLibrary = normalizedRole == 'librarian';
+            final requiresLibrary =
+                normalizedRole == 'librarian' || normalizedRole == 'admin';
             final selectedLibraryValue =
                 assignableLibraries.contains(selectedLibrary)
                 ? selectedLibrary
@@ -615,7 +779,8 @@ class DashboardController extends ChangeNotifier {
                               unitController.clear();
                               selectedLibrary = null;
                             }
-                            if (roleKey == 'librarian' &&
+                            if ((roleKey == 'librarian' ||
+                                    roleKey == 'admin') &&
                                 selectedLibrary == null &&
                                 assignableLibraries.isNotEmpty) {
                               selectedLibrary = assignableLibraries.first;
@@ -699,7 +864,7 @@ class DashboardController extends ChangeNotifier {
                             selectedLibrary!.trim().isEmpty)) {
                       setDialogState(() {
                         dialogError =
-                            'Please assign a library for this librarian.';
+                            'Please assign a library for this account.';
                       });
                       return;
                     }
@@ -821,6 +986,128 @@ class DashboardController extends ChangeNotifier {
       context,
     ).showSnackBar(SnackBar(content: Text('Removed ${account.name}')));
     reloadAccounts();
+  }
+
+  // Collection Request Methods
+  Future<void> requestCollection({
+    required BuildContext context,
+    required String collectionName,
+    required String collectionDescription,
+    required String requestReason,
+    required int desiredQuantity,
+  }) async {
+    try {
+      final collectionRequest = ReservationItem(
+        type: ReservationType.collection,
+        title: collectionName,
+        createdAt: DateTime.now(),
+        requesterEmail: creatorEmail ?? '',
+        requesterName: creatorName ?? '',
+        collectionName: collectionName,
+        collectionDescription: collectionDescription,
+        requestReason: requestReason,
+        desiredQuantity: desiredQuantity,
+      );
+
+      await ReservationStorage.instance.addReservation(collectionRequest);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Collection request submitted successfully!'),
+        ),
+      );
+      reloadReservations();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to submit collection request: $e')),
+      );
+    }
+  }
+
+  Future<List<ReservationItem>> getCollectionRequests() async {
+    final allReservations = await ReservationStorage.instance.getReservations();
+    return allReservations
+        .where((r) => r.type == ReservationType.collection)
+        .toList();
+  }
+
+  Future<List<ReservationItem>> getUserCollectionRequests(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final allReservations = await ReservationStorage.instance.getReservations();
+    return allReservations
+        .where(
+          (r) =>
+              r.type == ReservationType.collection &&
+              r.requesterEmail.toLowerCase() == normalizedEmail,
+        )
+        .toList();
+  }
+
+  Future<void> updateCollectionRequestStatus(
+    BuildContext context,
+    ReservationItem collectionRequest,
+    ReservationStatus newStatus,
+  ) async {
+    try {
+      final updated = collectionRequest;
+      updated.status = newStatus;
+
+      await ReservationStorage.instance.updateReservation(updated);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Collection request status updated to ${newStatus.label}',
+          ),
+        ),
+      );
+      reloadReservations();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update collection request: $e')),
+      );
+    }
+  }
+
+  Future<void> respondToCollectionRequest(
+    BuildContext context,
+    ReservationItem collectionRequest,
+    bool isAccepted,
+    String adminMessage,
+  ) async {
+    try {
+      final updated = collectionRequest;
+      updated.status = isAccepted
+          ? ReservationStatus.accepted
+          : ReservationStatus.declined;
+      updated.adminMessage = adminMessage;
+
+      await ReservationStorage.instance.updateReservation(updated);
+
+      // Send approval notification if accepted
+      if (isAccepted) {
+        await ReservationNotificationHelper.notifyReservationApproved(
+          updated,
+          userEmail: updated.requesterEmail,
+        );
+      }
+
+      if (!context.mounted) return;
+      final status = isAccepted ? 'accepted' : 'declined';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Collection request $status')));
+      reloadReservations();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to respond to collection request: $e')),
+      );
+    }
   }
 
   @override

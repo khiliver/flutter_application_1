@@ -19,6 +19,7 @@ class Account {
   final String? college;
   final String? department;
   final String? schoolId;
+  final String? employeeId;
   final String? personelType;
   final String? nonBuType;
   final String? address;
@@ -42,6 +43,7 @@ class Account {
     this.college,
     this.department,
     this.schoolId,
+    this.employeeId,
     this.personelType,
     this.nonBuType,
     this.address,
@@ -66,6 +68,7 @@ class Account {
     if (college != null) 'college': college,
     if (department != null) 'department': department,
     if (schoolId != null) 'schoolId': schoolId,
+    if (employeeId != null) 'employeeId': employeeId,
     if (personelType != null) 'personelType': personelType,
     if (nonBuType != null) 'nonBuType': nonBuType,
     if (address != null) 'address': address,
@@ -91,6 +94,7 @@ class Account {
       college: json['college'] as String?,
       department: json['department'] as String?,
       schoolId: json['schoolId'] as String?,
+      employeeId: json['employeeId'] as String?,
       personelType: json['personelType'] as String?,
       nonBuType: json['nonBuType'] as String?,
       address: json['address'] as String?,
@@ -174,6 +178,16 @@ class AccountStorage {
     return account != null && account.password == password;
   }
 
+  Future<void> markEmailVerified(String email) async {
+    if (_db == null) {
+      return;
+    }
+
+    await _db!.doc(_docIdForEmail(email)).set({
+      'emailVerified': true,
+    }, SetOptions(merge: true));
+  }
+
   Future<bool> addAccount(Account account) async {
     if (_isTopAdminRole(account.role)) {
       final canCreate = await canCreateSuperAdmin();
@@ -251,39 +265,74 @@ class AccountStorage {
 
   Future<bool> updateAccountProfile({
     required String email,
+    required String updatedEmail,
     required String name,
     String? avatarPath,
+    String? userType,
+    String? firstName,
+    String? middleName,
+    String? lastName,
+    String? contactNumber,
+    String? birthdate,
+    String? gender,
+    String? course,
+    String? college,
+    String? department,
+    String? schoolId,
+    String? employeeId,
+    String? personelType,
+    String? nonBuType,
+    String? address,
+    String? institutionOrSchool,
   }) async {
     final current = await findByEmail(email);
     if (current == null) {
       return false;
     }
 
+    final normalizedUpdatedEmail = updatedEmail.trim().toLowerCase();
+    if (normalizedUpdatedEmail.isEmpty) {
+      return false;
+    }
+
+    final normalizedCurrentEmail = current.email.trim().toLowerCase();
+    final isEmailChanged = normalizedUpdatedEmail != normalizedCurrentEmail;
+    if (isEmailChanged) {
+      final existing = await findByEmail(normalizedUpdatedEmail);
+      if (existing != null) {
+        return false;
+      }
+    }
+
     final updated = Account(
-      email: current.email,
+      email: normalizedUpdatedEmail,
       password: current.password,
       name: name,
       role: current.role,
       unit: current.unit,
-      userType: current.userType,
+      userType: userType,
       avatarPath: avatarPath,
-      firstName: current.firstName,
-      middleName: current.middleName,
-      lastName: current.lastName,
-      contactNumber: current.contactNumber,
-      birthdate: current.birthdate,
-      gender: current.gender,
-      course: current.course,
-      college: current.college,
-      department: current.department,
-      schoolId: current.schoolId,
-      personelType: current.personelType,
-      nonBuType: current.nonBuType,
-      address: current.address,
-      institutionOrSchool: current.institutionOrSchool,
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+      contactNumber: contactNumber,
+      birthdate: birthdate,
+      gender: gender,
+      course: course,
+      college: college,
+      department: department,
+      schoolId: schoolId,
+      employeeId: employeeId,
+      personelType: personelType,
+      nonBuType: nonBuType,
+      address: address,
+      institutionOrSchool: institutionOrSchool,
     );
 
     await _upsertAccount(updated);
+    if (isEmailChanged && _db != null) {
+      await _db!.doc(_docIdForEmail(current.email)).delete();
+    }
     return true;
   }
 
@@ -317,6 +366,18 @@ class AccountStorage {
       final isLibrarian = account.role.toLowerCase() == 'librarian';
       final assignedLibrary = account.unit?.trim().toLowerCase() ?? '';
       return isLibrarian && assignedLibrary == normalizedLibrary;
+    }).toList();
+  }
+
+  Future<List<Account>> getAdminsForLibrary(String library) async {
+    final normalizedLibrary = library.trim().toLowerCase();
+    if (normalizedLibrary.isEmpty) return [];
+
+    final accounts = await getAccounts();
+    return accounts.where((account) {
+      final isAdmin = account.role.toLowerCase() == 'admin';
+      final assignedLibrary = account.unit?.trim().toLowerCase() ?? '';
+      return isAdmin && assignedLibrary == normalizedLibrary;
     }).toList();
   }
 }

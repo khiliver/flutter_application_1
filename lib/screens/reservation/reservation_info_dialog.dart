@@ -27,6 +27,10 @@ class ReservationInfoDialog extends StatelessWidget {
               const SizedBox(height: 8),
               Text('Library: ${reservation.library}'),
             ],
+            if (reservation.service.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Service: ${reservation.service}'),
+            ],
             if (reservation.type == ReservationType.scannedCopy &&
                 reservation.hasScannedCopyPages) ...[
               const SizedBox(height: 8),

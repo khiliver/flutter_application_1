@@ -13,8 +13,19 @@ import 'widgets/user_management_section.dart';
 /// Demonstrates analytics sections and, for admin, a user management list.
 class DashboardScreen extends StatefulWidget {
   final String role;
+  final String? currentEmail;
+  final String? currentName;
+  final VoidCallback? onProfilePressed;
+  final VoidCallback? onLogoPressed;
 
-  const DashboardScreen({super.key, required this.role});
+  const DashboardScreen({
+    super.key,
+    required this.role,
+    this.currentEmail,
+    this.currentName,
+    this.onProfilePressed,
+    this.onLogoPressed,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -27,7 +38,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = DashboardController(role: widget.role)..loadInitialData();
+    _controller = DashboardController(
+      role: widget.role,
+      creatorEmail: widget.currentEmail,
+      creatorName: widget.currentName,
+    )..loadInitialData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
@@ -57,7 +72,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         return Scaffold(
-          appBar: const AppHeader(),
+          appBar: AppHeader(
+            onProfilePressed: widget.onProfilePressed,
+            onLogoPressed: widget.onLogoPressed,
+          ),
           body: Column(
             children: [
               AnnouncementSection(

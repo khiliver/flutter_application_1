@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 class Announcement {
+  final String? id;
   final String title;
   final String body;
   final DateTime createdAt;
@@ -9,8 +10,12 @@ class Announcement {
   final String? gifUrl; // URL to GIF
   final String? emoji; // Emoji character
   final String? sticker; // Sticker identifier or path
+  final String? postedByEmail;
+  final String? postedByName;
+  final String? postedByRole;
 
   Announcement({
+    this.id,
     required this.title,
     required this.body,
     required this.createdAt,
@@ -18,6 +23,9 @@ class Announcement {
     this.gifUrl,
     this.emoji,
     this.sticker,
+    this.postedByEmail,
+    this.postedByName,
+    this.postedByRole,
   });
 
   Map<String, dynamic> toJson() => {
@@ -28,10 +36,14 @@ class Announcement {
     'gifUrl': gifUrl,
     'emoji': emoji,
     'sticker': sticker,
+    if (postedByEmail != null) 'postedByEmail': postedByEmail,
+    if (postedByName != null) 'postedByName': postedByName,
+    if (postedByRole != null) 'postedByRole': postedByRole,
   };
 
-  factory Announcement.fromJson(Map<String, dynamic> json) {
+  factory Announcement.fromJson(Map<String, dynamic> json, {String? docId}) {
     return Announcement(
+      id: docId,
       title: json['title'] as String,
       body: json['body'] as String,
       createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
@@ -39,6 +51,9 @@ class Announcement {
       gifUrl: json['gifUrl'] as String?,
       emoji: json['emoji'] as String?,
       sticker: json['sticker'] as String?,
+      postedByEmail: json['postedByEmail'] as String?,
+      postedByName: json['postedByName'] as String?,
+      postedByRole: json['postedByRole'] as String?,
     );
   }
 
@@ -68,6 +83,26 @@ class AnnouncementStorage {
 
   bool get isReady => _collection != null;
 
+  bool canModifyAnnouncement(
+    Announcement announcement, {
+    String? currentEmail,
+    String? currentRole,
+  }) {
+    final normalizedRole = currentRole?.trim().toLowerCase() ?? '';
+    final isManager =
+        normalizedRole == 'admin' ||
+        normalizedRole == 'librarian' ||
+        normalizedRole == 'over all admin' ||
+        normalizedRole == 'super admin';
+    final normalizedEmail = currentEmail?.trim().toLowerCase() ?? '';
+    final ownerEmail = announcement.postedByEmail?.trim().toLowerCase() ?? '';
+
+    return isManager ||
+        (normalizedEmail.isNotEmpty &&
+            ownerEmail.isNotEmpty &&
+            normalizedEmail == ownerEmail);
+  }
+
   Future<List<Announcement>> getAnnouncements() async {
     if (_collection == null) return [];
 
@@ -78,7 +113,7 @@ class AnnouncementStorage {
     final list = snapshot.docs
         .map((doc) {
           try {
-            return Announcement.fromJson({...doc.data()});
+            return Announcement.fromJson({...doc.data()}, docId: doc.id);
           } catch (_) {
             return null;
           }
@@ -99,6 +134,27 @@ class AnnouncementStorage {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> updateAnnouncement(Announcement announcement) async {
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for announcement writes.');
+    }
+    if (announcement.id == null || announcement.id!.trim().isEmpty) {
+      throw StateError('Announcement id is required for updates.');
+    }
+
+    await _collection!.doc(announcement.id).update({
+      ...announcement.toJson(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteAnnouncement(String id) async {
+    if (_collection == null) {
+      throw StateError('Firebase is not initialized for announcement writes.');
+    }
+    await _collection!.doc(id).delete();
   }
 
   Future<void> clearAnnouncements() async {

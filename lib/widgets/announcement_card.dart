@@ -12,8 +12,15 @@ class AnnouncementCard extends StatelessWidget {
   final String? text;
   final String? imagePath;
   final String? feeling;
+  final VoidCallback? onLongPress;
 
-  const AnnouncementCard({super.key, this.text, this.imagePath, this.feeling});
+  const AnnouncementCard({
+    super.key,
+    this.text,
+    this.imagePath,
+    this.feeling,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,44 +32,81 @@ class AnnouncementCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (hasText)
-              RichText(
-                text: TextSpan(
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  children: _linkifiedTextSpans(text!, context),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onLongPress: onLongPress,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasText)
+                RichText(
+                  text: TextSpan(
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    children: _linkifiedTextSpans(text!, context),
+                  ),
                 ),
-              ),
-            if (hasImage) ...[
-              if (hasText) const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.file(
-                  File(imagePath!),
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      color: Theme.of(context).colorScheme.surfaceContainer,
-                      child: const Text('Image is no longer available.'),
-                    );
-                  },
+              if (hasImage) ...[
+                if (hasText) const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: _buildImage(context),
+                    ),
+                  ),
                 ),
-              ),
+              ],
+              if (hasFeeling) ...[
+                if (hasText || hasImage) const SizedBox(height: 12),
+                Chip(label: Text(feeling!)),
+              ],
+              if (!hasText && !hasImage && !hasFeeling)
+                const Text('No content.'),
             ],
-            if (hasFeeling) ...[
-              if (hasText || hasImage) const SizedBox(height: 12),
-              Chip(label: Text(feeling!)),
-            ],
-            if (!hasText && !hasImage && !hasFeeling) const Text('No content.'),
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImage(BuildContext context) {
+    final path = imagePath!.trim();
+
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _missingImagePlaceholder(context);
+        },
+      );
+    }
+
+    final filePath = path.startsWith('file://')
+        ? Uri.parse(path).toFilePath()
+        : path;
+    final file = File(filePath);
+
+    return Image.file(
+      file,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return _missingImagePlaceholder(context);
+      },
+    );
+  }
+
+  Widget _missingImagePlaceholder(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(12),
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: const Text('Image is no longer available.'),
     );
   }
 
