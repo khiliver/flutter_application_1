@@ -15,7 +15,7 @@ const String kBuceailsChildrenLibraryFacebookUrl =
     'https://www.facebook.com/buceilslibrary';
 const String kCollegeOfLawFacebookUrl =
     'https://www.facebook.com/profile.php?id=100085088296064';
-const String kHealthScienceLibraryFacebookUrl =
+const String kHealthSciencesLibraryFacebookUrl =
     'https://www.facebook.com/cncmlib';
 const String kTabacoCampusLibraryFacebookUrl =
     'https://www.facebook.com/profile.php?id=61584405076499';
@@ -26,13 +26,13 @@ const String kPolanguiCampusLibraryFacebookUrl =
 const String kGubatCampusLibraryFacebookUrl =
     'https://www.facebook.com/bugclibrary';
 const String kEastCampusLibraryFacebookUrl =
-    'https://www.facebook.com/$kFacebookPageHandle';
+    'https://www.facebook.com/profile.php?id=100064289391079';
 
 const List<String> kLibraryOptions = [
-  'BUCEILS Children and High School Library',
+  'BUCE-ILS Childrens and High School Library',
   'University Library',
   'College of Law',
-  'Health and Science Library',
+  'Health Sciences Library',
   'East Campus',
   'Tabaco Campus',
   'Guinobatan Campus',

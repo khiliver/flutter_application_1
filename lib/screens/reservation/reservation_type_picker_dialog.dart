@@ -11,18 +11,20 @@ class ReservationTypePickerDialog extends StatelessWidget {
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: ReservationType.values.map((type) {
-          final actionLabel = switch (type) {
-            ReservationType.scannedCopy => 'Request Scan',
-            ReservationType.collection => 'Request List of Collection',
-            _ => 'Reserve ${type.label}',
-          };
-          return ListTile(
-            leading: Icon(type.icon),
-            title: Text(actionLabel),
-            onTap: () => Navigator.of(context).pop(type),
-          );
-        }).toList(),
+        children: ReservationType.values
+            .where((type) => type != ReservationType.collection)
+            .map((type) {
+              final actionLabel = switch (type) {
+                ReservationType.scannedCopy => 'Document Delivery',
+                _ => 'Reserve ${type.label}',
+              };
+              return ListTile(
+                leading: Icon(type.icon),
+                title: Text(actionLabel),
+                onTap: () => Navigator.of(context).pop(type),
+              );
+            })
+            .toList(),
       ),
     );
   }

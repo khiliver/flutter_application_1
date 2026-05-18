@@ -10,7 +10,7 @@ class ReservationNotificationHelper {
       'https://drive.google.com/file/d/10CAQeuWzPFbMXof0rim5qFH6dPgGFETq/view?usp=drive_link';
   static const _eastCampusCollectionDriveUrl =
       'https://drive.google.com/drive/u/1/folders/1Czhcf8vqpQ3yVglANVOfeEi73xqeOxic';
-  static const _healthAndScienceLibraryCollectionDriveUrl =
+  static const _healthSciencesLibraryCollectionDriveUrl =
       'https://drive.google.com/drive/folders/1uyqodWKqa7FeN7zeP0P5HaoJBnoeZYvM';
   static const _gubatCampusCollectionDriveUrl =
       'https://drive.google.com/drive/folders/1ye2ccat8TzKNcyOwFMJBdL_YXzfxCFmV?usp=drive_link';
@@ -29,9 +29,9 @@ class ReservationNotificationHelper {
     if (normalizedLibrary == 'east campus') {
       return _eastCampusCollectionDriveUrl;
     }
-    if (normalizedLibrary == 'health and science library' ||
-        normalizedLibrary == 'science and health library') {
-      return _healthAndScienceLibraryCollectionDriveUrl;
+    if (normalizedLibrary == 'health sciences library' ||
+        normalizedLibrary == 'sciences health library') {
+      return _healthSciencesLibraryCollectionDriveUrl;
     }
     if (normalizedLibrary == 'gubat campus') {
       return _gubatCampusCollectionDriveUrl;
@@ -46,6 +46,11 @@ class ReservationNotificationHelper {
       return _tabacoCampusCollectionDriveUrl;
     }
     return _defaultCollectionDriveUrl;
+  }
+
+  /// Get the Google Drive link for a library's collection.
+  static String getCollectionDriveUrl(String library) {
+    return _resolveCollectionDriveUrl(library);
   }
 
   static Future<void> notifyReservationCreated(

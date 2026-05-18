@@ -23,12 +23,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   // Library contact information
   final List<({String name, String url})> _libraries = const [
     (
-      name: 'BUCEILS Children and Highschool Library',
+      name: 'BUCE-ILS Childrens and High School Library',
       url: kBuceailsChildrenLibraryFacebookUrl,
     ),
     (name: 'University Library', url: kUniversityLibraryFacebookUrl),
     (name: 'College of Law', url: kCollegeOfLawFacebookUrl),
-    (name: 'Health and Science Library', url: kHealthScienceLibraryFacebookUrl),
+    (name: 'Health Sciences Library', url: kHealthSciencesLibraryFacebookUrl),
     (name: 'East Campus', url: kEastCampusLibraryFacebookUrl),
     (name: 'Tabaco Campus', url: kTabacoCampusLibraryFacebookUrl),
     (name: 'Guinobatan Campus', url: kGuinoatanCampusLibraryFacebookUrl),
@@ -100,7 +100,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                               children: [
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'Library Contact',
+                                  'Official Facebook Page',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,

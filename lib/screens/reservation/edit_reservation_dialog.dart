@@ -18,6 +18,7 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
   late TextEditingController _titleController;
   late TextEditingController _pageStartController;
   late TextEditingController _pageEndController;
+  late TextEditingController _yearController;
   late ReservationStatus _status;
   late String _selectedLibrary;
   DateTime? _selectedDate;
@@ -25,6 +26,9 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
 
   bool get _isScannedCopy =>
       widget.reservation.type == ReservationType.scannedCopy;
+
+  bool get _isBookDocumentDelivery =>
+      _isScannedCopy && widget.reservation.service == 'Books';
 
   @override
   void initState() {
@@ -38,6 +42,11 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
     _pageEndController = TextEditingController(
       text: widget.reservation.pageEnd > 0
           ? widget.reservation.pageEnd.toString()
+          : '',
+    );
+    _yearController = TextEditingController(
+      text: widget.reservation.publicationYear > 0
+          ? widget.reservation.publicationYear.toString()
           : '',
     );
     _status = widget.reservation.status;
@@ -66,6 +75,7 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
     _titleController.dispose();
     _pageStartController.dispose();
     _pageEndController.dispose();
+    _yearController.dispose();
     super.dispose();
   }
 
@@ -113,6 +123,7 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
 
     int updatedPageStart = widget.reservation.pageStart;
     int updatedPageEnd = widget.reservation.pageEnd;
+    int updatedPublicationYear = widget.reservation.publicationYear;
     if (_isScannedCopy) {
       final pageStart = int.tryParse(_pageStartController.text.trim());
       final pageEnd = int.tryParse(_pageEndController.text.trim());
@@ -121,6 +132,11 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
       if (pageEnd - pageStart + 1 > 20) return;
       updatedPageStart = pageStart;
       updatedPageEnd = pageEnd;
+      if (_isBookDocumentDelivery) {
+        final publicationYear = int.tryParse(_yearController.text.trim());
+        if (publicationYear == null || publicationYear <= 0) return;
+        updatedPublicationYear = publicationYear;
+      }
     }
 
     Navigator.of(context).pop(
@@ -144,6 +160,7 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
         service: widget.reservation.service,
         pageStart: updatedPageStart,
         pageEnd: updatedPageEnd,
+        publicationYear: updatedPublicationYear,
         adminMessage: widget.reservation.adminMessage,
         startTime: updatedStartTime,
         endTime: updatedEndTime,
@@ -162,9 +179,11 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
             TextField(
               controller: _titleController,
               decoration: InputDecoration(
-                labelText:
-                    widget.reservation.type == ReservationType.book ||
-                        widget.reservation.type == ReservationType.scannedCopy
+                labelText: widget.reservation.service == 'Periodical'
+                    ? 'Periodical title'
+                    : (widget.reservation.type == ReservationType.book ||
+                          widget.reservation.type ==
+                              ReservationType.scannedCopy)
                     ? 'Book title'
                     : 'Reservation title',
               ),
@@ -210,8 +229,14 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
               const SizedBox(height: 16),
               TextField(
                 controller: _pageStartController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Page start'),
+                keyboardType: _isBookDocumentDelivery
+                    ? TextInputType.text
+                    : TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _isBookDocumentDelivery
+                      ? 'Page start'
+                      : 'Page start',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -219,6 +244,14 @@ class _EditReservationDialogState extends State<EditReservationDialog> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Page end'),
               ),
+              if (_isBookDocumentDelivery) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _yearController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Year'),
+                ),
+              ],
             ],
             const SizedBox(height: 16),
             DropdownButtonFormField<ReservationStatus>(

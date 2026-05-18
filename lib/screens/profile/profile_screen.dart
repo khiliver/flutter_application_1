@@ -3,9 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../constants.dart';
 import '../../services/account_storage.dart';
+import '../../services/reservation_notification_helper.dart';
 import '../../widgets/app_header.dart';
-import 'ejournal_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? initialName;
@@ -96,15 +97,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _openBooks() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            EJournalScreen(userRole: _role, userType: _userType),
-      ),
-    );
-  }
-
   void _showFAQ() {
     showModalBottomSheet(
       context: context,
@@ -124,11 +116,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'answer':
                 'You can contact support via the "Contact Us" section in the app or email ec-library@bicol-u.edu.ph.',
           },
-          {
-            'question': 'How do I reserve a book?',
-            'answer':
-                'Navigate to the Books section, select a book, and tap the "Reserve" button.',
-          },
+
           {
             'question': 'Can I update my profile information?',
             'answer':
@@ -203,37 +191,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(16),
             children: const [
               Text(
-                'About BU East Campus Library',
+                'About Bicol University Library System',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 12),
               Text(
-                'BU East Campus Library (BUECL) is the official library hub serving the Bicol University East Campus community in Legazpi City.',
+                'The Bicol University Library serves as the central knowledge hub of Bicol University, providing students, faculty, and researchers with access to quality academic resources and information services. The library supports excellence in education, research, and community engagement through its diverse collection of print and digital materials.',
               ),
               SizedBox(height: 10),
               Text(
-                'The East Campus library is located at the East Wing of the RS Building and supports learning and research for the Colleges of Engineering, Industrial Technology, and the Institute of Design and Architecture.',
+                'The library offers books, journals, research databases, e-library resources, and modern learning spaces designed to support academic and professional growth. As part of a multi-campus library system, it ensures accessible and user-centered services for the entire Bicol University community.',
               ),
               SizedBox(height: 10),
               Text(
-                'In this app, reservation services are available for students, BU personel/staff, and visitors from partner campuses or schools.',
+                'With a commitment to innovation and lifelong learning, the Bicol University Library continues to evolve as a dynamic center for knowledge and discovery.',
               ),
               SizedBox(height: 16),
               Text(
-                'Official Pages',
+                'For more details, visit our official website: sites.google.com/bicol-u.edu.ph/buls',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
-              SizedBox(height: 8),
-              Text('Facebook: https://www.facebook.com/BUECL'),
-              Text('Bicol University: https://www.bicol-u.edu.ph'),
-              Text(
-                'BU Library (East Campus): https://sites.google.com/bicol-u.edu.ph/buls/about-us/libraries/east-campus',
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCollectionsList() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text(
+                'List of Collection',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 12),
-              Text(
-                'Note: Details are based on publicly available BU and BUECL pages and may be updated by the university.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
-              ),
+              const SizedBox(height: 16),
+              ...kLibraryOptions.map((library) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final driveUrl =
+                          ReservationNotificationHelper.getCollectionDriveUrl(
+                            library,
+                          );
+                      if (await canLaunchUrl(Uri.parse(driveUrl))) {
+                        await launchUrl(
+                          Uri.parse(driveUrl),
+                          mode: LaunchMode.externalApplication,
+                        );
+                      } else {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Could not open link for $library'),
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(library),
+                  ),
+                );
+              }),
             ],
           ),
         );
@@ -298,9 +331,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: _editProfile,
             ),
             ListTile(
-              leading: const Icon(Icons.book),
-              title: const Text('Books'),
-              onTap: _openBooks,
+              leading: const Icon(Icons.library_books),
+              title: const Text('List of Collection'),
+              onTap: _showCollectionsList,
             ),
             ListTile(
               leading: const Icon(Icons.question_answer),

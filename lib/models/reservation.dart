@@ -77,6 +77,9 @@ class ReservationItem {
   final String author;
   final int pageStart;
   final int pageEnd;
+  final String thesisProgram;
+  final int thesisYear;
+  final int publicationYear;
   String adminMessage;
   DateTime? startTime;
   DateTime? endTime;
@@ -108,6 +111,9 @@ class ReservationItem {
     this.author = '',
     this.pageStart = 0,
     this.pageEnd = 0,
+    this.thesisProgram = '',
+    this.thesisYear = 0,
+    this.publicationYear = 0,
     this.adminMessage = '',
     this.startTime,
     this.endTime,
@@ -151,6 +157,9 @@ class ReservationItem {
     'author': author,
     'pageStart': pageStart,
     'pageEnd': pageEnd,
+    'thesisProgram': thesisProgram,
+    'thesisYear': thesisYear,
+    'publicationYear': publicationYear,
     'adminMessage': adminMessage,
     'startTime': startTime?.toIso8601String(),
     'endTime': endTime?.toIso8601String(),
@@ -191,6 +200,9 @@ class ReservationItem {
       author: _stringValue(json['author']),
       pageStart: _intValue(json['pageStart']),
       pageEnd: _intValue(json['pageEnd']),
+      thesisProgram: _stringValue(json['thesisProgram']),
+      thesisYear: _intValue(json['thesisYear']),
+      publicationYear: _intValue(json['publicationYear']),
       adminMessage: _stringValue(json['adminMessage']),
       startTime: _parseDateTime(json['startTime']),
       endTime: _parseDateTime(json['endTime']),

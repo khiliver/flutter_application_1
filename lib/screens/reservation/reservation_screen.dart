@@ -8,7 +8,6 @@ import '../../services/reservation_storage.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/reservation_card.dart';
 import 'book_reservation_form.dart';
-import 'collection_reservation_form.dart';
 import 'discussion_room_reservation_form.dart';
 import 'edit_reservation_dialog.dart';
 import 'reservation_info_dialog.dart';
@@ -194,22 +193,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           ),
         );
       case ReservationType.collection:
-        return showDialog<ReservationItem>(
-          context: context,
-          builder: (context) => CollectionReservationForm(
-            userEmail: widget.userEmail,
-            userName: widget.userName,
-            selectedLibrary: library,
-            userAccount: _currentAccount,
-          ),
-        );
+        // Collection requests moved to profile screen
+        return Future.value(null);
     }
   }
 
   Future<String?> _showTitleInput(ReservationType type) async {
     final controller = TextEditingController();
     final dialogTitle = type == ReservationType.scannedCopy
-        ? 'Request Scan'
+        ? 'Document Delivery'
         : 'Reserve ${type.label}';
     return showDialog<String>(
       context: context,

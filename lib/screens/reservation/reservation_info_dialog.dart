@@ -31,12 +31,29 @@ class ReservationInfoDialog extends StatelessWidget {
               const SizedBox(height: 8),
               Text('Service: ${reservation.service}'),
             ],
-            if (reservation.type == ReservationType.scannedCopy &&
-                reservation.hasScannedCopyPages) ...[
+            if (reservation.type == ReservationType.scannedCopy) ...[
               const SizedBox(height: 8),
-              Text(
-                'Pages: ${reservation.pageStart} - ${reservation.pageEnd} (${reservation.scannedCopyPageCount} pages)',
-              ),
+              if (reservation.service == 'Thesis/Dissertation' &&
+                  reservation.thesisProgram.isNotEmpty) ...[
+                Text('Program: ${reservation.thesisProgram}'),
+                const SizedBox(height: 4),
+                Text('Year: ${reservation.thesisYear}'),
+              ] else if (reservation.service == 'Periodical') ...[
+                Text('Periodical title: ${reservation.title}'),
+                const SizedBox(height: 4),
+                Text('Title of page: ${reservation.author}'),
+              ] else if (reservation.service == 'Books' &&
+                  reservation.publicationYear > 0) ...[
+                Text('Year: ${reservation.publicationYear}'),
+                const SizedBox(height: 4),
+                Text(
+                  'Pages: ${reservation.pageStart} - ${reservation.pageEnd} (${reservation.scannedCopyPageCount} pages)',
+                ),
+              ] else if (reservation.hasScannedCopyPages) ...[
+                Text(
+                  'Pages: ${reservation.pageStart} - ${reservation.pageEnd} (${reservation.scannedCopyPageCount} pages)',
+                ),
+              ],
             ],
             const SizedBox(height: 8),
             Text('Status: ${reservation.status.label}'),

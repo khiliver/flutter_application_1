@@ -32,18 +32,38 @@ class _ScannedCopyReservationFormState
   final authorController = TextEditingController();
   final pageStartController = TextEditingController();
   final pageEndController = TextEditingController();
+  final yearController = TextEditingController();
 
   DateTime? selectedDate;
-  TimeOfDay? selectedTime;
-  String _selectedDocumentType = 'Thesis';
+  String _selectedDocumentType = 'Thesis/Dissertation';
   String? errorText;
   final formKey = GlobalKey<ShadFormState>();
 
   final List<String> _documentTypeOptions = [
-    'Thesis',
-    'Printed Journals',
+    'Thesis/Dissertation',
+    'Books',
     'Periodical',
   ];
+
+  bool get _isThesisRequest => _selectedDocumentType == 'Thesis/Dissertation';
+
+  bool get _isBookRequest => _selectedDocumentType == 'Books';
+
+  bool get _isPeriodicalRequest => _selectedDocumentType == 'Periodical';
+
+  String get _pageStartLabel => _isThesisRequest ? 'Program' : 'Page start';
+
+  String get _pageEndLabel => _isThesisRequest ? 'Year' : 'Page end';
+
+  String get _yearLabel => 'Year';
+
+  String get _titleLabel => _isPeriodicalRequest ? 'Periodical title' : 'Title';
+
+  String get _authorLabel => _isPeriodicalRequest ? 'Title of page' : 'Author';
+
+  String get _completionErrorMessage => _isThesisRequest
+      ? 'Please complete document type, title, author, date, program, and year.'
+      : 'Please complete document type, title, author, date, and page range.';
 
   @override
   void dispose() {
@@ -51,6 +71,7 @@ class _ScannedCopyReservationFormState
     authorController.dispose();
     pageStartController.dispose();
     pageEndController.dispose();
+    yearController.dispose();
     super.dispose();
   }
 
@@ -74,53 +95,62 @@ class _ScannedCopyReservationFormState
     }
   }
 
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: selectedTime ?? TimeOfDay.now(),
-    );
-    if (picked != null) {
-      setState(() {
-        selectedTime = picked;
-        errorText = null;
-      });
-    }
-  }
-
   void _submit() {
     final documentType = _selectedDocumentType.trim();
     final bookTitle = titleController.text.trim();
     final author = authorController.text.trim();
-    final pageStart = int.tryParse(pageStartController.text.trim());
-    final pageEnd = int.tryParse(pageEndController.text.trim());
+    final pageStartValue = pageStartController.text.trim();
+    final pageEndValue = pageEndController.text.trim();
+    final yearValue = yearController.text.trim();
+    final pageStart = _isThesisRequest ? null : int.tryParse(pageStartValue);
+    final pageEnd = int.tryParse(pageEndValue);
+    final publicationYear = _isBookRequest ? int.tryParse(yearValue) : 0;
 
     if (selectedDate == null ||
-        selectedTime == null ||
         documentType.isEmpty ||
         bookTitle.isEmpty ||
         author.isEmpty ||
-        pageStart == null ||
-        pageEnd == null) {
+        pageEnd == null ||
+        (_isThesisRequest ? pageStartValue.isEmpty : pageStart == null) ||
+        (_isBookRequest && publicationYear == null)) {
       setState(() {
-        errorText =
-            'Please complete document type, title, author, date, time, and page range.';
+        errorText = _completionErrorMessage;
       });
       return;
     }
 
-    if (pageStart <= 0 || pageEnd <= 0 || pageEnd < pageStart) {
-      setState(() {
-        errorText = 'Page range is invalid.';
-      });
-      return;
-    }
+    if (_isThesisRequest) {
+      if (pageEnd <= 0) {
+        setState(() {
+          errorText = 'Year is invalid.';
+        });
+        return;
+      }
+    } else {
+      if (pageStart == null ||
+          pageStart <= 0 ||
+          pageEnd <= 0 ||
+          pageEnd < pageStart) {
+        setState(() {
+          errorText = 'Page range is invalid.';
+        });
+        return;
+      }
 
-    final pageCount = pageEnd - pageStart + 1;
-    if (pageCount > 20) {
-      setState(() {
-        errorText = 'Scanned copy request is limited to 20 pages only.';
-      });
-      return;
+      final pageCount = pageEnd - pageStart + 1;
+      if (pageCount > 20) {
+        setState(() {
+          errorText = 'Scanned copy request is limited to 20 pages only.';
+        });
+        return;
+      }
+
+      if (_isBookRequest && (publicationYear == null || publicationYear <= 0)) {
+        setState(() {
+          errorText = 'Year is invalid.';
+        });
+        return;
+      }
     }
 
     final userInfo = ReservationFormUserInfo.fromAccount(
@@ -128,8 +158,6 @@ class _ScannedCopyReservationFormState
       fallbackEmail: widget.userEmail,
       fallbackName: widget.userName,
     );
-    final slotStart = combineDateAndTime(selectedDate!, selectedTime!);
-    final slotEnd = slotStart.add(const Duration(hours: 2));
 
     Navigator.of(context).pop(
       ReservationItem(
@@ -141,7 +169,7 @@ class _ScannedCopyReservationFormState
         firstName: userInfo.firstName,
         middleName: userInfo.middleName,
         surname: userInfo.surname,
-        reservationDate: slotStart,
+        reservationDate: selectedDate,
         schoolId: userInfo.schoolId,
         cellphone: userInfo.cellphone,
         college: userInfo.college,
@@ -149,10 +177,11 @@ class _ScannedCopyReservationFormState
         library: widget.selectedLibrary ?? '',
         service: documentType,
         author: author,
-        pageStart: pageStart,
+        pageStart: pageStart ?? 0,
         pageEnd: pageEnd,
-        startTime: slotStart,
-        endTime: slotEnd,
+        thesisProgram: _isThesisRequest ? pageStartValue : '',
+        thesisYear: _isThesisRequest ? pageEnd : 0,
+        publicationYear: _isBookRequest ? publicationYear! : 0,
       ),
     );
   }
@@ -201,45 +230,44 @@ class _ScannedCopyReservationFormState
                 const SizedBox(height: 12),
                 ShadInput(
                   controller: titleController,
-                  placeholder: const Text('Title'),
+                  placeholder: Text(_titleLabel),
                 ),
                 const SizedBox(height: 12),
                 ShadInput(
                   controller: authorController,
-                  placeholder: const Text('Author'),
+                  placeholder: Text(_authorLabel),
                 ),
                 const SizedBox(height: 12),
                 ShadInput(
                   controller: pageStartController,
-                  placeholder: const Text('Page start'),
-                  keyboardType: TextInputType.number,
+                  placeholder: Text(_pageStartLabel),
+                  keyboardType: _isThesisRequest
+                      ? TextInputType.text
+                      : TextInputType.number,
                 ),
                 const SizedBox(height: 12),
                 ShadInput(
                   controller: pageEndController,
-                  placeholder: const Text('Page end'),
+                  placeholder: Text(_pageEndLabel),
                   keyboardType: TextInputType.number,
                 ),
+                if (_isBookRequest) ...[
+                  const SizedBox(height: 12),
+                  ShadInput(
+                    controller: yearController,
+                    placeholder: Text(_yearLabel),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
-                        'Date to reserve: ${formatDate(selectedDate)}',
+                        'Date Requested: ${formatDate(selectedDate)}',
                       ),
                     ),
                     TextButton(onPressed: _pickDate, child: const Text('Pick')),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Time to reserve: ${formatTimeOfDay(selectedTime)}',
-                      ),
-                    ),
-                    TextButton(onPressed: _pickTime, child: const Text('Pick')),
                   ],
                 ),
                 const SizedBox(height: 12),
